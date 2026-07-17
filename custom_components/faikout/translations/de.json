@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Faikout",
-        "description": "Gefundenes Faikout-Modul auswählen oder Hostnamen eingeben (der mittlere Teil der MQTT-Topics, z. B. state/<host>).",
+        "description": "Gefundenes Faikout-Modul auswählen oder Hostnamen eingeben — der mittlere Teil der MQTT-Topics (das GuestAC in state/GuestAC).",
         "data": { "host": "Hostname" }
       }
     },

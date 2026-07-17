@@ -33,10 +33,15 @@ jobs:
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
-    name: HACS validation
+    name: HACS validation (advisory)
     runs-on: ubuntu-latest
+    # Advisory: full HACS default-store validation needs the Home Assistant
+    # brands repo entry (external PR) and published releases, which are out of
+    # scope for a personal custom repository. hassfest is the hard gate.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
         with:
           category: integration
+          ignore: brands

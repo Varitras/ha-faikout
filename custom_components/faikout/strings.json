@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Faikout",
-        "description": "Select a discovered Faikout module or enter its hostname (the middle part of its MQTT topics, e.g. state/<host>).",
+        "description": "Select a discovered Faikout module, or enter its hostname — the middle part of its MQTT topics (the GuestAC in state/GuestAC).",
         "data": { "host": "Hostname" }
       }
     },
