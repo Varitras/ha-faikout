@@ -18,7 +18,13 @@
       "home": { "name": "Raumtemperatur" },
       "outside": { "name": "Außentemperatur" },
       "inlet": { "name": "Ansaugtemperatur" },
-      "liquid": { "name": "Flüssigkeits-/Wärmetauschertemperatur" }
+      "liquid": { "name": "Flüssigkeits-/Wärmetauschertemperatur" },
+      "humidity": { "name": "Luftfeuchtigkeit" },
+      "power": { "name": "Leistung" },
+      "energy_heating": { "name": "Energie Heizen" },
+      "energy_cooling": { "name": "Energie Kühlen" },
+      "fan_speed": { "name": "Lüfterdrehzahl" },
+      "demand": { "name": "Anforderung" }
     },
     "switch": {
       "powerful": { "name": "Powerful" },

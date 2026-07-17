@@ -18,7 +18,13 @@
       "home": { "name": "Room temperature" },
       "outside": { "name": "Outside temperature" },
       "inlet": { "name": "Inlet temperature" },
-      "liquid": { "name": "Liquid/coil temperature" }
+      "liquid": { "name": "Liquid/coil temperature" },
+      "humidity": { "name": "Humidity" },
+      "power": { "name": "Power" },
+      "energy_heating": { "name": "Energy heating" },
+      "energy_cooling": { "name": "Energy cooling" },
+      "fan_speed": { "name": "Fan speed" },
+      "demand": { "name": "Demand" }
     },
     "switch": {
       "powerful": { "name": "Powerful" },
