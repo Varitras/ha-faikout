@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import CONF_HOST, control_topic, merge_state, state_topic
+from .const import CONF_HOST, control_topic, merge_state, status_topic
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_start(self) -> None:
         self._unsub = await mqtt.async_subscribe(
-            self.hass, state_topic(self.host), self._message_received
+            self.hass, status_topic(self.host), self._message_received
         )
 
     @callback

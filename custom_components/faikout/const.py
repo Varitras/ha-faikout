@@ -18,6 +18,13 @@ def state_topic(host: str) -> str:
     return f"state/{host}"
 
 
+def status_topic(host: str) -> str:
+    # The device publishes the protocol-format status (mode "C", fan "A",
+    # swingv/swingh, home=current, temp=setpoint) under the /status suffix.
+    # The bare state/<host> topic carries a different word-format app status.
+    return f"state/{host}/status"
+
+
 def control_topic(host: str) -> str:
     return f"command/{host}/control"
 
@@ -49,27 +56,24 @@ ACTION_IDLE = "idle"
 ACTION_FAN = "fan"
 
 # --- Fan --------------------------------------------------------------------
+# The device reports "quiet" as a separate boolean flag (see SWITCH_FIELDS),
+# NOT as a fan value. Fan levels are auto + manual 1-5.
 FAN_AUTO = "auto"
-FAN_QUIET = "quiet"
-FAN_MODES = [FAN_AUTO, FAN_QUIET, "1", "2", "3", "4", "5"]
+FAN_MODES = [FAN_AUTO, "1", "2", "3", "4", "5"]
 
 
 def fan_dev_to_ha(value) -> str | None:
     if value is None:
         return None
     s = str(value).upper()
-    if s == "A":
+    if s in ("A", "Q"):  # "Q" (legacy quiet-as-fan) maps to auto
         return FAN_AUTO
-    if s == "Q":
-        return FAN_QUIET
     return str(value)
 
 
 def fan_ha_to_dev(mode: str):
     if mode == FAN_AUTO:
         return "A"
-    if mode == FAN_QUIET:
-        return "Q"
     return int(mode)
 
 
@@ -104,7 +108,7 @@ TEMP_MIN = 16.0
 TEMP_MAX = 30.0
 TEMP_STEP = 0.5
 TEMP_SENSORS = ["home", "outside", "inlet", "liquid"]
-SWITCH_FIELDS = ["powerful", "econo", "streamer", "swingv", "swingh"]
+SWITCH_FIELDS = ["powerful", "econo", "streamer", "quiet", "swingv", "swingh"]
 
 
 # --- State readers ----------------------------------------------------------

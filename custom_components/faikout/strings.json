@@ -24,6 +24,7 @@
       "powerful": { "name": "Powerful" },
       "econo": { "name": "Economy" },
       "streamer": { "name": "Streamer" },
+      "quiet": { "name": "Quiet" },
       "swingv": { "name": "Vertical swing" },
       "swingh": { "name": "Horizontal swing" }
     }

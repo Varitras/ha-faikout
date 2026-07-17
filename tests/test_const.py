@@ -21,6 +21,7 @@ _spec.loader.exec_module(const)
 
 def test_topic_helpers():
     assert const.state_topic("GuestAC") == "state/GuestAC"
+    assert const.status_topic("GuestAC") == "state/GuestAC/status"
     assert const.control_topic("GuestAC") == "command/GuestAC/control"
     assert const.DISCOVERY_TOPIC == "state/+"
 
@@ -32,7 +33,10 @@ def test_mode_mapping_roundtrip():
     assert const.HVAC_MODES[0] == "off"
 
 
-@pytest.mark.parametrize("dev,ha", [("A", "auto"), ("Q", "quiet"), ("a", "auto"), (1, "1"), ("3", "3")])
+# "quiet" is a separate boolean flag on the device, not a fan value: fan
+# stays "A"/"auto" while the quiet switch toggles independently. A legacy
+# "Q" fan value maps to auto.
+@pytest.mark.parametrize("dev,ha", [("A", "auto"), ("Q", "auto"), ("a", "auto"), (1, "1"), ("3", "3")])
 def test_fan_dev_to_ha(dev, ha):
     assert const.fan_dev_to_ha(dev) == ha
 
@@ -41,7 +45,16 @@ def test_fan_dev_to_ha_none():
     assert const.fan_dev_to_ha(None) is None
 
 
-@pytest.mark.parametrize("ha,dev", [("auto", "A"), ("quiet", "Q"), ("1", 1), ("5", 5)])
+def test_fan_modes_have_no_quiet():
+    assert "quiet" not in const.FAN_MODES
+    assert const.FAN_MODES == ["auto", "1", "2", "3", "4", "5"]
+
+
+def test_quiet_is_a_switch_field():
+    assert "quiet" in const.SWITCH_FIELDS
+
+
+@pytest.mark.parametrize("ha,dev", [("auto", "A"), ("1", 1), ("5", 5)])
 def test_fan_ha_to_dev(ha, dev):
     assert const.fan_ha_to_dev(ha) == dev
 
