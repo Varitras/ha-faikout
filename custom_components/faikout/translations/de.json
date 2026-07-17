@@ -24,7 +24,9 @@
       "energy_heating": { "name": "Energie Heizen" },
       "energy_cooling": { "name": "Energie Kühlen" },
       "fan_speed": { "name": "Lüfterdrehzahl" },
-      "demand": { "name": "Anforderung" }
+      "demand": { "name": "Anforderung" },
+      "wifi_signal": { "name": "WLAN-Signal" },
+      "energy_total": { "name": "Energie gesamt" }
     },
     "switch": {
       "powerful": { "name": "Powerful" },

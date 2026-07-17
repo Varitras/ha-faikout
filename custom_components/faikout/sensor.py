@@ -12,6 +12,8 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
     UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
@@ -25,9 +27,14 @@ from .entity import FaikoutEntity
 
 @dataclass(frozen=True, kw_only=True)
 class FaikoutSensorDescription(SensorEntityDescription):
-    """Sensor description with an optional scale factor applied to the raw value."""
+    """Sensor description with a scale factor and a source topic.
+
+    ``source`` selects where the value is read: ``"status"`` = state/<host>/status
+    (the default), ``"meta"`` = the bare state/<host> app status (WiFi/energy/etc.).
+    """
 
     factor: float = 1.0
+    source: str = "status"
 
 
 def _temp(key: str) -> FaikoutSensorDescription:
@@ -88,6 +95,25 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    # From the bare state/<host> topic (device_meta), not /status.
+    FaikoutSensorDescription(
+        key="rssi",
+        translation_key="wifi_signal",
+        source="meta",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    FaikoutSensorDescription(
+        key="energy",
+        translation_key="energy_total",
+        source="meta",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        factor=0.001,
+    ),
 ]
 
 
@@ -103,14 +129,23 @@ async def async_setup_entry(
     def _add_new() -> None:
         # Create a sensor the first time its field appears — so a field that is
         # momentarily absent at setup still gets a sensor once it shows up.
-        data = coordinator.data or {}
-        new = [d for d in DESCRIPTIONS if d.key in data and d.key not in added]
+        new = [
+            d
+            for d in DESCRIPTIONS
+            if d.key not in added and d.key in _source_dict(coordinator, d)
+        ]
         if new:
             added.update(d.key for d in new)
             async_add_entities(FaikoutSensor(coordinator, d) for d in new)
 
     _add_new()
     entry.async_on_unload(coordinator.async_add_listener(_add_new))
+
+
+def _source_dict(coordinator, description) -> dict:
+    if getattr(description, "source", "status") == "meta":
+        return coordinator.device_meta or {}
+    return coordinator.data or {}
 
 
 class FaikoutSensor(FaikoutEntity, SensorEntity):
@@ -123,7 +158,9 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
 
     @property
     def native_value(self):
-        raw = self._data.get(self.entity_description.key)
+        raw = _source_dict(self.coordinator, self.entity_description).get(
+            self.entity_description.key
+        )
         factor = getattr(self.entity_description, "factor", 1.0)
         if raw is None or factor == 1.0:
             return raw
