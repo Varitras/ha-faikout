@@ -1,6 +1,8 @@
 """Sensor platform for Faikout: temperatures, humidity, power, energy, fan."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -21,8 +23,15 @@ from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
 
-def _temp(key: str) -> SensorEntityDescription:
-    return SensorEntityDescription(
+@dataclass(frozen=True, kw_only=True)
+class FaikoutSensorDescription(SensorEntityDescription):
+    """Sensor description with an optional scale factor applied to the raw value."""
+
+    factor: float = 1.0
+
+
+def _temp(key: str) -> FaikoutSensorDescription:
+    return FaikoutSensorDescription(
         key=key,
         translation_key=key,
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -31,13 +40,15 @@ def _temp(key: str) -> SensorEntityDescription:
     )
 
 
-def _energy(key: str, translation_key: str) -> SensorEntityDescription:
-    return SensorEntityDescription(
+def _energy(key: str, translation_key: str) -> FaikoutSensorDescription:
+    # Device reports Wh; expose as kWh (factor 1/1000).
+    return FaikoutSensorDescription(
         key=key,
         translation_key=translation_key,
         device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
+        factor=0.001,
     )
 
 
@@ -112,4 +123,8 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
 
     @property
     def native_value(self):
-        return self._data.get(self.entity_description.key)
+        raw = self._data.get(self.entity_description.key)
+        factor = getattr(self.entity_description, "factor", 1.0)
+        if raw is None or factor == 1.0:
+            return raw
+        return round(raw * factor, 3)
