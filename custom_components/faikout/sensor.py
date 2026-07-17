@@ -14,7 +14,7 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import FaikoutConfigEntry
@@ -86,10 +86,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    data = coordinator.data or {}
-    async_add_entities(
-        FaikoutSensor(coordinator, d) for d in DESCRIPTIONS if d.key in data
-    )
+    added: set[str] = set()
+
+    @callback
+    def _add_new() -> None:
+        # Create a sensor the first time its field appears — so a field that is
+        # momentarily absent at setup still gets a sensor once it shows up.
+        data = coordinator.data or {}
+        new = [d for d in DESCRIPTIONS if d.key in data and d.key not in added]
+        if new:
+            added.update(d.key for d in new)
+            async_add_entities(FaikoutSensor(coordinator, d) for d in new)
+
+    _add_new()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
 class FaikoutSensor(FaikoutEntity, SensorEntity):

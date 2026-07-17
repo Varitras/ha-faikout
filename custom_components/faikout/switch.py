@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import SWITCH_FIELDS, build_switch_command
@@ -16,12 +16,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    data = coordinator.data or {}
-    async_add_entities(
-        FaikoutSwitch(coordinator, field)
-        for field in SWITCH_FIELDS
-        if field in data
-    )
+    added: set[str] = set()
+
+    @callback
+    def _add_new() -> None:
+        # Create a switch the first time its field appears, so a model-dependent
+        # control that is absent at setup still shows up once the device reports it.
+        data = coordinator.data or {}
+        new = [f for f in SWITCH_FIELDS if f in data and f not in added]
+        if new:
+            added.update(new)
+            async_add_entities(FaikoutSwitch(coordinator, f) for f in new)
+
+    _add_new()
+    entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
 class FaikoutSwitch(FaikoutEntity, SwitchEntity):
