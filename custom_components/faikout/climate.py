@@ -28,6 +28,7 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     """A Faikout air conditioner."""
 
     _attr_name = None  # primary entity → uses device name
+    _enable_turn_on_off_backwards_compatibility = False
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode(m) for m in const.HVAC_MODES]
     _attr_fan_modes = const.FAN_MODES

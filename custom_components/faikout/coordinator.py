@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import control_topic, merge_state, state_topic
+from .const import CONF_HOST, control_topic, merge_state, state_topic
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,8 +20,9 @@ type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     """Holds the latest state dict for one Faikout module."""
 
-    def __init__(self, hass: HomeAssistant, host: str) -> None:
-        super().__init__(hass, _LOGGER, name=f"faikout_{host}")
+    def __init__(self, hass: HomeAssistant, entry: "FaikoutConfigEntry") -> None:
+        host = entry.data[CONF_HOST]
+        super().__init__(hass, _LOGGER, config_entry=entry, name=f"faikout_{host}")
         self.host = host
         self._unsub = None
         self._first_data = asyncio.Event()
@@ -41,7 +42,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             _LOGGER.warning("Ignoring unparseable state on %s: %r", msg.topic, payload)
             return
         self.async_set_updated_data(new_state)
-        self._first_data.set()
+        # Only a real JSON state (not a bare presence "true"/"false") satisfies
+        # the first-data wait, so entity/switch discovery sees the full field set.
+        if payload not in ("true", "false"):
+            self._first_data.set()
 
     async def async_wait_first_data(self, timeout: float = 10) -> None:
         try:
@@ -62,8 +66,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         except Exception:  # noqa: BLE001 - never let a command crash the entity
             _LOGGER.exception("Failed to publish control to %s: %s", self.host, fields)
 
-    @callback
-    def async_shutdown(self) -> None:
+    async def async_shutdown(self) -> None:
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
+        await super().async_shutdown()
