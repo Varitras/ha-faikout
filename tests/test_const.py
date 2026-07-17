@@ -1,6 +1,22 @@
+import importlib.util
+import pathlib
+
 import pytest
 
-from custom_components.faikout import const
+# Load const.py directly from its file path instead of
+# `from custom_components.faikout import const`. The latter would first
+# execute `custom_components/faikout/__init__.py`, which imports
+# `homeassistant` (not installed in this HA-free test environment). const.py
+# itself has no such dependency, so it can be exercised standalone.
+_CONST_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "faikout"
+    / "const.py"
+)
+_spec = importlib.util.spec_from_file_location("faikout_const", _CONST_PATH)
+const = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(const)
 
 
 def test_topic_helpers():
