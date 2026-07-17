@@ -32,7 +32,10 @@
       "powerful": { "name": "Powerful" },
       "econo": { "name": "Eco" },
       "streamer": { "name": "Streamer" },
-      "quiet": { "name": "Leise" },
+      "quiet": { "name": "Leise (außen)" },
+      "comfort": { "name": "Komfortmodus" },
+      "sensor": { "name": "Sensormodus (Bewegung)" },
+      "led": { "name": "LED" },
       "swingv": { "name": "Lamellen vertikal" },
       "swingh": { "name": "Lamellen horizontal" }
     }

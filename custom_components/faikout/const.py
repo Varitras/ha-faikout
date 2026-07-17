@@ -105,10 +105,20 @@ def swing_ha_to_dev(mode: str) -> dict:
 
 # --- Temperature / entity sets ----------------------------------------------
 TEMP_MIN = 16.0
-TEMP_MAX = 30.0
+TEMP_MAX = 32.0  # firmware HA discovery reports max_temp 32
 TEMP_STEP = 0.5
 TEMP_SENSORS = ["home", "outside", "inlet", "liquid"]
-SWITCH_FIELDS = ["powerful", "econo", "streamer", "quiet", "swingv", "swingh"]
+SWITCH_FIELDS = [
+    "powerful",
+    "econo",
+    "streamer",
+    "quiet",
+    "comfort",
+    "sensor",
+    "led",
+    "swingv",
+    "swingh",
+]
 
 
 # --- Device metadata --------------------------------------------------------
