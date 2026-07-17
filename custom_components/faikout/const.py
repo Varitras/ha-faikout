@@ -111,6 +111,24 @@ TEMP_SENSORS = ["home", "outside", "inlet", "liquid"]
 SWITCH_FIELDS = ["powerful", "econo", "streamer", "quiet", "swingv", "swingh"]
 
 
+# --- Device metadata --------------------------------------------------------
+def device_metadata(meta: dict) -> dict:
+    """Extract HA device fields from the bare ``state/<host>`` app status.
+
+    That topic carries ``app`` (product), ``version`` (firmware), ``build-suffix``
+    (hardware variant) and ``id`` (MAC). ``/status`` does not, so device info is
+    sourced from here. Missing keys yield ``None``.
+    """
+    app = meta.get("app") or "Faikout"
+    suffix = (meta.get("build-suffix") or "").lstrip("-").strip()
+    model = f"{app} {suffix}".strip() if suffix else app
+    return {
+        "model": model or None,
+        "sw_version": meta.get("version") or None,
+        "mac": meta.get("id") or None,
+    }
+
+
 # --- State readers ----------------------------------------------------------
 def hvac_mode_from_state(data: dict) -> str | None:
     if not data.get("power", False):

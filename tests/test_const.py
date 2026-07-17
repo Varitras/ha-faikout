@@ -54,6 +54,28 @@ def test_quiet_is_a_switch_field():
     assert "quiet" in const.SWITCH_FIELDS
 
 
+def test_device_metadata_from_bare_status():
+    meta = {
+        "app": "Faikout",
+        "version": "3087afa9",
+        "build-suffix": "-S3-MINI-N4-R2",
+        "id": "A1B2C3D4E5F6",
+    }
+    assert const.device_metadata(meta) == {
+        "model": "Faikout S3-MINI-N4-R2",
+        "sw_version": "3087afa9",
+        "mac": "A1B2C3D4E5F6",
+    }
+
+
+def test_device_metadata_defaults():
+    assert const.device_metadata({}) == {
+        "model": "Faikout",
+        "sw_version": None,
+        "mac": None,
+    }
+
+
 @pytest.mark.parametrize("ha,dev", [("auto", "A"), ("1", 1), ("5", 5)])
 def test_fan_ha_to_dev(ha, dev):
     assert const.fan_ha_to_dev(ha) == dev
