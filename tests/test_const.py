@@ -1,0 +1,140 @@
+import importlib.util
+import pathlib
+
+import pytest
+
+# Load const.py directly from its file path instead of
+# `from custom_components.faikout import const`. The latter would first
+# execute `custom_components/faikout/__init__.py`, which imports
+# `homeassistant` (not installed in this HA-free test environment). const.py
+# itself has no such dependency, so it can be exercised standalone.
+_CONST_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "faikout"
+    / "const.py"
+)
+_spec = importlib.util.spec_from_file_location("faikout_const", _CONST_PATH)
+const = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(const)
+
+
+def test_topic_helpers():
+    assert const.state_topic("GuestAC") == "state/GuestAC"
+    assert const.control_topic("GuestAC") == "command/GuestAC/control"
+    assert const.DISCOVERY_TOPIC == "state/+"
+
+
+def test_mode_mapping_roundtrip():
+    assert const.MODE_DEV_TO_HA == {"H": "heat", "C": "cool", "A": "auto", "D": "dry", "F": "fan_only"}
+    assert const.MODE_HA_TO_DEV["heat"] == "H"
+    assert const.MODE_HA_TO_DEV["fan_only"] == "F"
+    assert const.HVAC_MODES[0] == "off"
+
+
+@pytest.mark.parametrize("dev,ha", [("A", "auto"), ("Q", "quiet"), ("a", "auto"), (1, "1"), ("3", "3")])
+def test_fan_dev_to_ha(dev, ha):
+    assert const.fan_dev_to_ha(dev) == ha
+
+
+def test_fan_dev_to_ha_none():
+    assert const.fan_dev_to_ha(None) is None
+
+
+@pytest.mark.parametrize("ha,dev", [("auto", "A"), ("quiet", "Q"), ("1", 1), ("5", 5)])
+def test_fan_ha_to_dev(ha, dev):
+    assert const.fan_ha_to_dev(ha) == dev
+
+
+@pytest.mark.parametrize("v,h,expected", [
+    (False, False, "off"), (True, False, "vertical"),
+    (False, True, "horizontal"), (True, True, "both"), (None, None, "off"),
+])
+def test_swing_dev_to_ha(v, h, expected):
+    assert const.swing_dev_to_ha(v, h) == expected
+
+
+@pytest.mark.parametrize("mode,expected", [
+    ("off", {"swingv": False, "swingh": False}),
+    ("vertical", {"swingv": True, "swingh": False}),
+    ("horizontal", {"swingv": False, "swingh": True}),
+    ("both", {"swingv": True, "swingh": True}),
+])
+def test_swing_ha_to_dev(mode, expected):
+    assert const.swing_ha_to_dev(mode) == expected
+
+
+# --- state readers ---
+def test_hvac_mode_from_state_off_when_power_false():
+    assert const.hvac_mode_from_state({"power": False, "mode": "C"}) == "off"
+
+
+def test_hvac_mode_from_state_uses_mode_when_on():
+    assert const.hvac_mode_from_state({"power": True, "mode": "H"}) == "heat"
+
+
+def test_hvac_mode_from_state_unknown_mode_is_none():
+    assert const.hvac_mode_from_state({"power": True, "mode": "?"}) is None
+
+
+@pytest.mark.parametrize("data,expected", [
+    ({"power": False}, "off"),
+    ({"power": True, "heat": True}, "heating"),
+    ({"power": True, "mode": "C"}, "cooling"),
+    ({"power": True, "mode": "D"}, "drying"),
+    ({"power": True, "mode": "F"}, "fan"),
+    ({"power": True, "mode": "A"}, "idle"),
+])
+def test_hvac_action_from_state(data, expected):
+    assert const.hvac_action_from_state(data) == expected
+
+
+# --- command builders ---
+def test_build_hvac_mode_command_off():
+    assert const.build_hvac_mode_command("off") == {"power": False}
+
+
+def test_build_hvac_mode_command_cool():
+    assert const.build_hvac_mode_command("cool") == {"power": True, "mode": "C"}
+
+
+def test_build_temperature_command():
+    assert const.build_temperature_command(23.5) == {"temp": 23.5}
+
+
+def test_build_fan_command_numeric():
+    assert const.build_fan_command("3") == {"fan": 3}
+
+
+def test_build_fan_command_auto():
+    assert const.build_fan_command("auto") == {"fan": "A"}
+
+
+def test_build_swing_command_both():
+    assert const.build_swing_command("both") == {"swingv": True, "swingh": True}
+
+
+def test_build_switch_command():
+    assert const.build_switch_command("econo", True) == {"econo": True}
+    assert const.build_switch_command("streamer", False) == {"streamer": False}
+
+
+# --- merge_state ---
+def test_merge_state_json():
+    assert const.merge_state({"power": False}, '{"power": true, "temp": 21}') == {"power": True, "temp": 21}
+
+
+def test_merge_state_presence_false():
+    assert const.merge_state({"power": True}, "false") == {"power": True, "online": False}
+
+
+def test_merge_state_presence_true():
+    assert const.merge_state(None, "true") == {"online": True}
+
+
+def test_merge_state_invalid_json_returns_none():
+    assert const.merge_state({"power": True}, "not json") is None
+
+
+def test_merge_state_non_object_returns_none():
+    assert const.merge_state({}, "[1,2,3]") is None

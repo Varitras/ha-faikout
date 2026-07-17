@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Faikout",
+        "description": "Gefundenes Faikout-Modul auswählen oder Hostnamen eingeben (der mittlere Teil der MQTT-Topics, z. B. state/<host>).",
+        "data": { "host": "Hostname" }
+      }
+    },
+    "error": { "invalid_host": "Bitte einen gültigen Hostnamen eingeben." },
+    "abort": {
+      "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
+      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "home": { "name": "Raumtemperatur" },
+      "outside": { "name": "Außentemperatur" },
+      "inlet": { "name": "Ansaugtemperatur" },
+      "liquid": { "name": "Flüssigkeits-/Wärmetauschertemperatur" }
+    },
+    "switch": {
+      "powerful": { "name": "Powerful" },
+      "econo": { "name": "Eco" },
+      "streamer": { "name": "Streamer" },
+      "swingv": { "name": "Lamellen vertikal" },
+      "swingh": { "name": "Lamellen horizontal" }
+    }
+  }
+}
