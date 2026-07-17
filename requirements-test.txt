@@ -1,1 +1,7 @@
 pytest>=8.0
+
+# Optional: install `homeassistant` as well to additionally run
+# tests/test_imports.py, which imports the HA-dependent modules to catch
+# API breakage. Those tests skip automatically when homeassistant is not
+# installed, so the pure tests/test_const.py suite always runs standalone.
+#   pip install homeassistant
