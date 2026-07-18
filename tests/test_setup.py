@@ -211,3 +211,16 @@ async def test_update_interval_throttles_pushes(hass, freezer):
     await hass.async_block_till_done()
 
     assert hass.states.get(CLIMATE).attributes["temperature"] == 25
+
+
+async def test_non_numeric_value_does_not_break_a_scaled_sensor(hass):
+    """The device is untrusted: a string must not raise inside the property."""
+    transport = make_transport(status={**STATUS_PAYLOAD, "Whheating": 1000})
+    await setup_integration(hass, transport)
+    entity_id = f"sensor.{TEST_HOST}_energy_heating"
+    assert hass.states.get(entity_id).state == "1.0"
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"Whheating": "nonsense"}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state in ("unknown", "unavailable")

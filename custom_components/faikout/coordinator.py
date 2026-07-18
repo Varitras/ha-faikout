@@ -215,8 +215,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 await self._first_data.wait()
         except TimeoutError:
             _LOGGER.warning(
-                "No initial state from %s within %ss; entities may be incomplete",
-                self.host,
+                "Nothing received on %s within %ss. The module may be switched "
+                "off, or the hostname may be wrong - it is the middle part of "
+                "the MQTT topics. Entities stay unavailable until it reports",
+                status_topic(self.host),
                 timeout,
             )
 

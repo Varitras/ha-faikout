@@ -1,6 +1,7 @@
 """Sensor platform for Faikout: temperatures, humidity, power, energy, fan."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from homeassistant.components.sensor import (
@@ -27,6 +28,8 @@ from homeassistant.util import dt as dt_util
 
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -228,4 +231,11 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         factor = getattr(self.entity_description, "factor", 1.0)
         if factor == 1.0:
             return raw
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            # The device is untrusted: a string here would raise inside this
+            # property on every state write.
+            _LOGGER.debug(
+                "Ignoring non-numeric %s: %r", self.entity_description.key, raw
+            )
+            return None
         return round(raw * factor, 3)

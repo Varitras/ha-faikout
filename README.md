@@ -143,6 +143,11 @@ settings if you want them.
   unreliable as a standalone switch.
 - **TLS has no way to pin a specific certificate.** It either verifies against the usual trust stores or
   not at all; there is no field for a custom CA file.
+- **A wrong hostname is not rejected.** The hostname is only checked for characters that would break an
+  MQTT topic, not against the broker — a module that is merely switched off at the time would otherwise be
+  impossible to add. So a typo produces a device that stays *Unavailable* forever, with only a warning in
+  the log. If a freshly added device never becomes available, check the hostname first: it is the middle
+  part of the topics, and `mosquitto_sub -h your-broker -t 'state/+' -v` shows the ones that exist.
 - **Faikout-Auto is not exposed** (target range, external reference, schedules). Use the module's own web
   interface for that.
 - Two modules with the same hostname on different brokers are told apart by their MAC address, which is

@@ -377,6 +377,13 @@ async def async_discover_on_broker(
             if tls_insecure:
                 client.tls_set(cert_reqs=ssl.CERT_NONE)
                 client.tls_insecure_set(True)
+                # Logged here too, so the log answers "was verification ever
+                # switched off on this install" for the setup path as well.
+                _LOGGER.warning(
+                    "TLS certificate checks are disabled while probing %s:%s",
+                    host,
+                    port,
+                )
             else:
                 client.tls_set()
 
