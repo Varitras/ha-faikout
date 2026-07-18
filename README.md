@@ -33,10 +33,13 @@ Sensors and switches are created for the fields your module actually reports, an
 Faikout-Auto (target range / external `env` reference / schedules). Use the module's web UI for that.
 
 ## Development
-The pure device↔HA logic lives in `const.py` (no Home Assistant import) and is unit-tested. The HA adapter modules are covered by an import smoke test that runs whenever Home Assistant is installed.
+The pure device↔HA logic lives in `const.py` (no Home Assistant import) and is unit-tested standalone. On top of that, the config flow, coordinator and entities are tested against a real Home Assistant core with a fake MQTT transport, so no broker is needed.
 
 ```bash
 python -m venv .venv
-pip install -r requirements-test.txt   # add `homeassistant` to also run the import tests
+pip install -r requirements-test.txt
+pip install pytest-homeassistant-custom-component paho-mqtt   # full suite
 pytest -q
 ```
+
+The Home Assistant tests are Linux/macOS only (HA's test machinery imports `fcntl`); they skip automatically elsewhere, so the pure suite still runs on Windows. Use WSL2 there to run everything.
