@@ -173,3 +173,31 @@ def test_merge_state_invalid_json_returns_none():
 
 def test_merge_state_non_object_returns_none():
     assert const.merge_state({}, "[1,2,3]") is None
+
+
+# --- host validation --------------------------------------------------------
+@pytest.mark.parametrize(
+    "host", ["GuestAC", "faikin-1", "ac_2", "hall.faikin"]
+)
+def test_is_valid_host_accepts_normal_names(host):
+    assert const.is_valid_host(host)
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "",
+        " ",
+        " lead",
+        "trail ",
+        "with space",
+        "a/b",      # topic level separator
+        "a+b",      # single-level wildcard
+        "a#b",      # multi-level wildcard
+        "#",
+        "+",
+        "bad\nline",
+    ],
+)
+def test_is_valid_host_rejects_topic_breaking_names(host):
+    assert not const.is_valid_host(host)

@@ -19,11 +19,15 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
 
     def __init__(self, coordinator: FaikoutCoordinator) -> None:
         super().__init__(coordinator)
+        self._attr_device_info = self._build_device_info()
+
+    def _build_device_info(self) -> DeviceInfo:
+        coordinator = self.coordinator
         meta = device_metadata(coordinator.device_meta)
         connections = (
             {(CONNECTION_NETWORK_MAC, format_mac(meta["mac"]))} if meta["mac"] else set()
         )
-        self._attr_device_info = DeviceInfo(
+        return DeviceInfo(
             identifiers={(DOMAIN, coordinator.host)},
             connections=connections,
             name=coordinator.host,
@@ -43,4 +47,5 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
             and bool(self.coordinator.data)
             and self._data.get("online") is not False
             and self.coordinator.module_online
+            and self.coordinator.transport_online
         )

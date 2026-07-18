@@ -16,10 +16,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: FaikoutConfigEntry) -> b
         entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     )
     await coordinator.async_start()
-    await coordinator.async_wait_first_data()
-    entry.runtime_data = coordinator
-    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        await coordinator.async_wait_first_data()
+        entry.runtime_data = coordinator
+        entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        # The own MQTT client has a live socket and a running network thread by
+        # now; without this the failed setup would leak both.
+        await coordinator.async_shutdown()
+        raise
     return True
 
 

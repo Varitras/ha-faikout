@@ -14,13 +14,18 @@ which transport it is using.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from homeassistant.components import mqtt
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 
 from .const import (
     CONF_MQTT_HOST,
@@ -34,6 +39,39 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# How long to wait for the broker's CONNACK before giving up. The TCP connect
+# succeeding says nothing about whether the broker accepted us.
+CONNECT_TIMEOUT = 10
+
+# CONNACK codes that mean "your credentials are wrong", so the user is asked to
+# re-authenticate instead of Home Assistant retrying forever. 4/5 are MQTT 3.1.1
+# (bad user/password, not authorised), 134/135 the MQTT 5 equivalents.
+AUTH_FAILURE_CODES = {4, 5, 134, 135}
+
+
+def _is_failure(reason_code) -> bool:
+    """Whether a CONNACK reason code means the broker rejected us.
+
+    paho hands back a ReasonCode object; fall back to comparing against 0 for
+    the plain-int case.
+    """
+    is_failure = getattr(reason_code, "is_failure", None)
+    if is_failure is not None:
+        return bool(is_failure)
+    return reason_code != 0
+
+
+class MqttConnectionRefused(Exception):
+    """The broker answered the CONNACK with a failure code."""
+
+    def __init__(self, reason_code) -> None:
+        super().__init__(f"Broker refused the connection: {reason_code}")
+        self.reason_code = reason_code
+
+    @property
+    def is_auth_failure(self) -> bool:
+        return getattr(self.reason_code, "value", self.reason_code) in AUTH_FAILURE_CODES
+
 
 @dataclass
 class FaikoutMessage:
@@ -45,6 +83,13 @@ class FaikoutMessage:
 
 class FaikoutTransport:
     """Transport interface."""
+
+    def set_connection_listener(self, listener: Callable[[bool], None]) -> None:
+        """Register a callback invoked with the live connection state.
+
+        Only the own-client transport can lose its connection independently of
+        Home Assistant; the HA transport never calls this.
+        """
 
     async def async_connect(self) -> None:
         """Establish the connection (no-op for the HA transport)."""
@@ -90,11 +135,14 @@ class OwnMqttTransport(FaikoutTransport):
         # this transport is not used. paho ships with HA's MQTT integration.
         import paho.mqtt.client as paho
 
+        self._paho = paho
         self.hass = hass
         self._host = host
         self._port = port
         self._subs: dict[str, Callable[[FaikoutMessage], None]] = {}
         self._connected = False
+        self._listener: Callable[[bool], None] | None = None
+        self._connack: asyncio.Future | None = None
         self._client = paho.Client(paho.CallbackAPIVersion.VERSION2)
         if username:
             self._client.username_pw_set(username, password or None)
@@ -102,7 +150,17 @@ class OwnMqttTransport(FaikoutTransport):
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
 
+    def set_connection_listener(self, listener) -> None:
+        self._listener = listener
+
     async def async_connect(self) -> None:
+        """Connect and wait for the broker to actually accept us.
+
+        A successful TCP connect only means the socket opened — a broker that
+        rejects the credentials does so in the CONNACK, so treating connect()
+        as success would leave the entry loaded with a dead connection.
+        """
+        self._connack = self.hass.loop.create_future()
         try:
             await self.hass.async_add_executor_job(
                 self._client.connect, self._host, self._port, 60
@@ -113,14 +171,55 @@ class OwnMqttTransport(FaikoutTransport):
             ) from err
         self._client.loop_start()
 
+        try:
+            async with asyncio.timeout(CONNECT_TIMEOUT):
+                reason_code = await self._connack
+        except TimeoutError as err:
+            await self.async_stop()
+            raise ConfigEntryNotReady(
+                f"No CONNACK from MQTT broker {self._host}:{self._port} "
+                f"within {CONNECT_TIMEOUT}s"
+            ) from err
+
+        if _is_failure(reason_code):
+            await self.async_stop()
+            message = (
+                f"MQTT broker {self._host}:{self._port} refused the connection: "
+                f"{reason_code}"
+            )
+            if getattr(reason_code, "value", reason_code) in AUTH_FAILURE_CODES:
+                raise ConfigEntryAuthFailed(message)
+            raise ConfigEntryNotReady(message)
+
     # -- paho thread callbacks (NOT on the HA event loop) --------------------
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
-        self._connected = True
-        for topic in self._subs:
-            client.subscribe(topic, 0)
+        self.hass.loop.call_soon_threadsafe(self._handle_connect, reason_code)
 
     def _on_disconnect(self, client, userdata, *args):
+        self.hass.loop.call_soon_threadsafe(self._handle_disconnect)
+
+    @callback
+    def _handle_connect(self, reason_code) -> None:
+        failed = _is_failure(reason_code)
+        self._connected = not failed
+        if self._connack is not None and not self._connack.done():
+            self._connack.set_result(reason_code)
+        if failed:
+            return
+        # Re-subscribe: paho drops subscriptions on reconnect.
+        for topic in self._subs:
+            self._client.subscribe(topic, 0)
+        self._notify()
+
+    @callback
+    def _handle_disconnect(self) -> None:
         self._connected = False
+        self._notify()
+
+    @callback
+    def _notify(self) -> None:
+        if self._listener is not None:
+            self._listener(self._connected)
 
     def _on_message(self, client, userdata, msg):
         callback = self._subs.get(msg.topic)
@@ -143,7 +242,14 @@ class OwnMqttTransport(FaikoutTransport):
         return _unsub
 
     async def async_publish(self, topic, payload):
-        self._client.publish(topic, payload)
+        info = self._client.publish(topic, payload)
+        if info.rc != self._paho.MQTT_ERR_SUCCESS:
+            # Most commonly MQTT_ERR_NO_CONN. Raising makes the service call
+            # fail visibly instead of pretending the device got the command.
+            raise HomeAssistantError(
+                f"Could not publish to {topic}: "
+                f"{self._paho.error_string(info.rc)} (rc={info.rc})"
+            )
 
     async def async_stop(self) -> None:
         self._client.loop_stop()
@@ -162,8 +268,11 @@ async def async_discover_on_broker(
 
     Used by the config flow when the user sets up an own broker, so devices on
     that broker can be discovered without Home Assistant's MQTT integration.
-    Raises OSError when the broker cannot be reached.
+    Raises OSError when the broker cannot be reached and MqttConnectionRefused
+    when it rejects the CONNACK (e.g. wrong credentials) — without that check a
+    bad password would look like "connected, no devices found".
     """
+    import threading
     import time
 
     import paho.mqtt.client as paho
@@ -175,8 +284,14 @@ async def async_discover_on_broker(
         if username:
             client.username_pw_set(username, password or None)
 
+        connected = threading.Event()
+        result: dict = {}
+
         def _on_connect(c, userdata, flags, reason_code, properties=None):
-            c.subscribe(DISCOVERY_TOPIC, 0)
+            result["reason_code"] = reason_code
+            connected.set()
+            if not _is_failure(reason_code):
+                c.subscribe(DISCOVERY_TOPIC, 0)
 
         def _on_message(c, userdata, msg):
             parts = msg.topic.split("/")
@@ -188,6 +303,11 @@ async def async_discover_on_broker(
         client.connect(host, port, 60)
         client.loop_start()
         try:
+            if not connected.wait(CONNECT_TIMEOUT):
+                raise OSError(f"No CONNACK from {host}:{port}")
+            reason_code = result.get("reason_code")
+            if _is_failure(reason_code):
+                raise MqttConnectionRefused(reason_code)
             time.sleep(seconds)
         finally:
             client.loop_stop()

@@ -17,6 +17,11 @@ Custom integration for Faikin/Faikout AC modules (RevK firmware) over MQTT.
    - **Home Assistant's MQTT integration** — uses the broker HA is already connected to, or
    - **An own MQTT broker** — enter host/port/credentials; the integration connects directly. Useful when the
      Faikout lives on a different broker than HA's MQTT client.
+
+     > **LAN only.** This mode speaks plain MQTT — there is no TLS option yet, so the broker credentials and
+     > all control traffic travel unencrypted. Only use it on a trusted local network, never across the
+     > internet. For a remote broker, point Home Assistant's own MQTT integration at it (TLS supported there)
+     > and pick the first option instead.
 5. Pick the discovered module (or type its hostname) and submit.
 
 Both the connection and an optional update-interval throttle can be changed later under the integration's

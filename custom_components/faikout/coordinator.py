@@ -7,10 +7,20 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import CONF_HOST, control_topic, merge_state, state_topic, status_topic
+from .const import (
+    CONF_HOST,
+    DOMAIN,
+    control_topic,
+    device_metadata,
+    merge_state,
+    state_topic,
+    status_topic,
+)
 from .transport import FaikoutTransport
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,9 +46,15 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._first_data = asyncio.Event()
         # Device metadata (model/firmware/MAC) from the bare state/<host> topic.
         self.device_meta: dict = {}
+        self._registered_meta: dict | None = None
         # Module presence: the bare state/<host> topic doubles as the LWT
         # ("false" when the module drops off MQTT). Optimistic until told otherwise.
         self.module_online = True
+        # Broker link state. The module LWT only tells us the device dropped off
+        # MQTT; if our own connection to the broker dies we stop hearing anything
+        # at all, so entities must go unavailable on that too.
+        self.transport_online = True
+        transport.set_connection_listener(self._transport_connection_changed)
         # Update throttle: 0 = real-time; N>0 = push to HA at most every N seconds
         # (latest value always flushed via a trailing timer).
         self._min_interval = 0.0
@@ -61,6 +77,17 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         )
 
     @callback
+    def _transport_connection_changed(self, connected: bool) -> None:
+        if connected == self.transport_online:
+            return
+        self.transport_online = connected
+        if not connected:
+            _LOGGER.warning("Lost the MQTT connection carrying %s", self.host)
+        # Availability changed for every entity — push immediately rather than
+        # letting the update throttle delay the bad news.
+        self.async_update_listeners()
+
+    @callback
     def _meta_received(self, msg) -> None:
         payload = msg.payload
         if isinstance(payload, (bytes, bytearray)):
@@ -76,7 +103,36 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 return
             self.device_meta = parsed
             self.module_online = parsed.get("online", True) is not False
+            self._update_device_registry()
         self._maybe_push()
+
+    @callback
+    def _update_device_registry(self) -> None:
+        """Push late-arriving model/firmware/MAC onto the device entry.
+
+        Entities capture DeviceInfo when they are created. If the bare state
+        topic only arrives afterwards (or the module is upgraded), the device
+        would keep showing the stale values without this.
+        """
+        meta = device_metadata(self.device_meta)
+        if meta == self._registered_meta:
+            return
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, self.host)})
+        if device is None:
+            return  # entities not created yet; they will pick it up themselves
+        self._registered_meta = meta
+        registry.async_update_device(
+            device.id,
+            model=meta["model"],
+            sw_version=meta["sw_version"],
+            merge_connections=(
+                {(dr.CONNECTION_NETWORK_MAC, dr.format_mac(meta["mac"]))}
+                if meta["mac"]
+                else None
+            )
+            or dr.UNDEFINED,
+        )
 
     @callback
     def _message_received(self, msg) -> None:
@@ -135,12 +191,22 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             )
 
     async def async_send_control(self, **fields) -> None:
+        """Publish a control command.
+
+        Failures propagate: a service call that silently did nothing is worse
+        than one that reports an error, because the user sees the entity snap
+        back and has no idea why.
+        """
         try:
             await self._transport.async_publish(
                 control_topic(self.host), json.dumps(fields)
             )
-        except Exception:  # noqa: BLE001 - never let a command crash the entity
-            _LOGGER.exception("Failed to publish control to %s: %s", self.host, fields)
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                f"Failed to send {fields} to {self.host}: {err}"
+            ) from err
 
     async def async_shutdown(self) -> None:
         if self._unsub is not None:

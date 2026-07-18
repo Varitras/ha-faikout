@@ -30,6 +30,21 @@ CONF_MQTT_PASSWORD = "mqtt_password"
 DEFAULT_MQTT_PORT = 1883
 
 
+def is_valid_host(host: str) -> bool:
+    """Whether a hostname is safe to build MQTT topics from.
+
+    The host is substituted straight into the topic, so the MQTT wildcards
+    ``+`` and ``#`` and the level separator ``/`` must be rejected: they would
+    turn a publish into an invalid topic and a subscribe into a wildcard that
+    matches other devices. Whitespace and control characters are refused too.
+    """
+    if not host or host.strip() != host:
+        return False
+    if any(c in host for c in "+#/"):
+        return False
+    return all(c.isprintable() and not c.isspace() for c in host)
+
+
 def state_topic(host: str) -> str:
     return f"state/{host}"
 

@@ -22,8 +22,9 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DISCOVERY_TOPIC,
     DOMAIN,
+    is_valid_host,
 )
-from .transport import async_discover_on_broker
+from .transport import MqttConnectionRefused, async_discover_on_broker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
-            if not host:
+            if not is_valid_host(host):
                 errors["base"] = "invalid_host"
             else:
                 await self.async_set_unique_id(host)
@@ -108,7 +109,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                     broker[CONF_MQTT_PASSWORD] or None,
                     DISCOVERY_SECONDS,
                 )
-            except Exception:  # noqa: BLE001 - any connect/auth problem
+            except MqttConnectionRefused as err:
+                _LOGGER.debug("Broker refused the connection", exc_info=True)
+                errors["base"] = (
+                    "invalid_auth" if err.is_auth_failure else "cannot_connect"
+                )
+            except Exception:  # noqa: BLE001 - any other connect problem
                 _LOGGER.debug("Broker discovery failed", exc_info=True)
                 errors["base"] = "cannot_connect"
             else:
@@ -148,7 +154,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
-            if not host:
+            if not is_valid_host(host):
                 errors["base"] = "invalid_host"
             else:
                 await self.async_set_unique_id(host)

@@ -12,7 +12,9 @@
       "ha_mqtt": {
         "title": "Modul auswählen",
         "description": "Gefundenes Faikout-Modul auswählen oder Hostnamen eingeben — der mittlere Teil der MQTT-Topics (das GuestAC in state/GuestAC).",
-        "data": { "host": "Hostname" }
+        "data": {
+          "host": "Hostname"
+        }
       },
       "own_mqtt": {
         "title": "MQTT-Broker",
@@ -27,12 +29,15 @@
       "own_host": {
         "title": "Modul auswählen",
         "description": "Auf diesem Broker gefundenes Faikout-Modul auswählen oder Hostnamen eingeben.",
-        "data": { "host": "Hostname" }
+        "data": {
+          "host": "Hostname"
+        }
       }
     },
     "error": {
       "invalid_host": "Bitte einen gültigen Hostnamen eingeben.",
-      "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen."
+      "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen.",
+      "invalid_auth": "Benutzername oder Passwort für diesen Broker ist falsch."
     },
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
@@ -59,43 +64,113 @@
   },
   "entity": {
     "sensor": {
-      "home": { "name": "Raumtemperatur" },
-      "outside": { "name": "Außentemperatur" },
-      "inlet": { "name": "Ansaugtemperatur" },
-      "liquid": { "name": "Flüssigkeits-/Wärmetauschertemperatur" },
-      "humidity": { "name": "Luftfeuchtigkeit" },
-      "power": { "name": "Leistung" },
-      "energy_heating": { "name": "Energie Heizen" },
-      "energy_cooling": { "name": "Energie Kühlen" },
-      "fan_speed": { "name": "Lüfterdrehzahl" },
-      "compressor": { "name": "Kompressor" },
-      "demand": { "name": "Anforderung" },
-      "wifi_signal": { "name": "WLAN-Signal" },
-      "energy_total": { "name": "Energie gesamt" },
-      "last_report": { "name": "Letzte Meldung" },
-      "uptime": { "name": "Betriebszeit" },
-      "mqtt_up": { "name": "MQTT-Verbindungsdauer" },
-      "free_memory": { "name": "Freier Speicher" },
-      "free_spiram": { "name": "Freier SPI-RAM" },
-      "flash": { "name": "Flash-Größe" },
-      "wifi_channel": { "name": "WLAN-Kanal" },
-      "reset_reason": { "name": "Reset-Grund" },
-      "ssid": { "name": "WLAN-SSID" },
-      "bssid": { "name": "WLAN-BSSID" },
-      "ip_address": { "name": "IP-Adresse" },
-      "build": { "name": "Firmware-Build" },
-      "protocol": { "name": "Protokoll" }
+      "home": {
+        "name": "Raumtemperatur"
+      },
+      "outside": {
+        "name": "Außentemperatur"
+      },
+      "inlet": {
+        "name": "Ansaugtemperatur"
+      },
+      "liquid": {
+        "name": "Flüssigkeits-/Wärmetauschertemperatur"
+      },
+      "humidity": {
+        "name": "Luftfeuchtigkeit"
+      },
+      "power": {
+        "name": "Leistung"
+      },
+      "energy_heating": {
+        "name": "Energie Heizen"
+      },
+      "energy_cooling": {
+        "name": "Energie Kühlen"
+      },
+      "fan_speed": {
+        "name": "Lüfterdrehzahl"
+      },
+      "compressor": {
+        "name": "Kompressor"
+      },
+      "demand": {
+        "name": "Anforderung"
+      },
+      "wifi_signal": {
+        "name": "WLAN-Signal"
+      },
+      "energy_total": {
+        "name": "Energie gesamt"
+      },
+      "last_report": {
+        "name": "Letzte Meldung"
+      },
+      "uptime": {
+        "name": "Betriebszeit"
+      },
+      "mqtt_up": {
+        "name": "MQTT-Verbindungsdauer"
+      },
+      "free_memory": {
+        "name": "Freier Speicher"
+      },
+      "free_spiram": {
+        "name": "Freier SPI-RAM"
+      },
+      "flash": {
+        "name": "Flash-Größe"
+      },
+      "wifi_channel": {
+        "name": "WLAN-Kanal"
+      },
+      "reset_reason": {
+        "name": "Reset-Grund"
+      },
+      "ssid": {
+        "name": "WLAN-SSID"
+      },
+      "bssid": {
+        "name": "WLAN-BSSID"
+      },
+      "ip_address": {
+        "name": "IP-Adresse"
+      },
+      "build": {
+        "name": "Firmware-Build"
+      },
+      "protocol": {
+        "name": "Protokoll"
+      }
     },
     "switch": {
-      "powerful": { "name": "Powerful" },
-      "econo": { "name": "Eco" },
-      "streamer": { "name": "Streamer" },
-      "quiet": { "name": "Leise (außen)" },
-      "comfort": { "name": "Komfortmodus" },
-      "sensor": { "name": "Sensormodus (Bewegung)" },
-      "led": { "name": "LED" },
-      "swingv": { "name": "Lamellen vertikal" },
-      "swingh": { "name": "Lamellen horizontal" }
+      "powerful": {
+        "name": "Powerful"
+      },
+      "econo": {
+        "name": "Eco"
+      },
+      "streamer": {
+        "name": "Streamer"
+      },
+      "quiet": {
+        "name": "Leise (außen)"
+      },
+      "comfort": {
+        "name": "Komfortmodus"
+      },
+      "sensor": {
+        "name": "Sensormodus (Bewegung)"
+      },
+      "led": {
+        "name": "LED"
+      },
+      "swingv": {
+        "name": "Lamellen vertikal"
+      },
+      "swingh": {
+        "name": "Lamellen horizontal"
+      }
     }
   }
 }

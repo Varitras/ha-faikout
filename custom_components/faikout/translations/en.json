@@ -12,7 +12,9 @@
       "ha_mqtt": {
         "title": "Select module",
         "description": "Select a discovered Faikout module, or enter its hostname — the middle part of its MQTT topics (the GuestAC in state/GuestAC).",
-        "data": { "host": "Hostname" }
+        "data": {
+          "host": "Hostname"
+        }
       },
       "own_mqtt": {
         "title": "MQTT broker",
@@ -27,12 +29,15 @@
       "own_host": {
         "title": "Select module",
         "description": "Select a Faikout module found on that broker, or enter its hostname.",
-        "data": { "host": "Hostname" }
+        "data": {
+          "host": "Hostname"
+        }
       }
     },
     "error": {
       "invalid_host": "Please enter a valid hostname.",
-      "cannot_connect": "Could not connect to that broker. Check host, port and credentials."
+      "cannot_connect": "Could not connect to that broker. Check host, port and credentials.",
+      "invalid_auth": "Wrong username or password for that broker."
     },
     "abort": {
       "mqtt_not_configured": "The MQTT integration must be set up before adding Faikout.",
@@ -59,43 +64,113 @@
   },
   "entity": {
     "sensor": {
-      "home": { "name": "Room temperature" },
-      "outside": { "name": "Outside temperature" },
-      "inlet": { "name": "Inlet temperature" },
-      "liquid": { "name": "Liquid/coil temperature" },
-      "humidity": { "name": "Humidity" },
-      "power": { "name": "Power" },
-      "energy_heating": { "name": "Energy heating" },
-      "energy_cooling": { "name": "Energy cooling" },
-      "fan_speed": { "name": "Fan speed" },
-      "compressor": { "name": "Compressor" },
-      "demand": { "name": "Demand" },
-      "wifi_signal": { "name": "WiFi signal" },
-      "energy_total": { "name": "Energy total" },
-      "last_report": { "name": "Last report" },
-      "uptime": { "name": "Uptime" },
-      "mqtt_up": { "name": "MQTT uptime" },
-      "free_memory": { "name": "Free memory" },
-      "free_spiram": { "name": "Free SPI RAM" },
-      "flash": { "name": "Flash size" },
-      "wifi_channel": { "name": "WiFi channel" },
-      "reset_reason": { "name": "Reset reason" },
-      "ssid": { "name": "WiFi SSID" },
-      "bssid": { "name": "WiFi BSSID" },
-      "ip_address": { "name": "IP address" },
-      "build": { "name": "Firmware build" },
-      "protocol": { "name": "Protocol" }
+      "home": {
+        "name": "Room temperature"
+      },
+      "outside": {
+        "name": "Outside temperature"
+      },
+      "inlet": {
+        "name": "Inlet temperature"
+      },
+      "liquid": {
+        "name": "Liquid/coil temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "energy_heating": {
+        "name": "Energy heating"
+      },
+      "energy_cooling": {
+        "name": "Energy cooling"
+      },
+      "fan_speed": {
+        "name": "Fan speed"
+      },
+      "compressor": {
+        "name": "Compressor"
+      },
+      "demand": {
+        "name": "Demand"
+      },
+      "wifi_signal": {
+        "name": "WiFi signal"
+      },
+      "energy_total": {
+        "name": "Energy total"
+      },
+      "last_report": {
+        "name": "Last report"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "mqtt_up": {
+        "name": "MQTT uptime"
+      },
+      "free_memory": {
+        "name": "Free memory"
+      },
+      "free_spiram": {
+        "name": "Free SPI RAM"
+      },
+      "flash": {
+        "name": "Flash size"
+      },
+      "wifi_channel": {
+        "name": "WiFi channel"
+      },
+      "reset_reason": {
+        "name": "Reset reason"
+      },
+      "ssid": {
+        "name": "WiFi SSID"
+      },
+      "bssid": {
+        "name": "WiFi BSSID"
+      },
+      "ip_address": {
+        "name": "IP address"
+      },
+      "build": {
+        "name": "Firmware build"
+      },
+      "protocol": {
+        "name": "Protocol"
+      }
     },
     "switch": {
-      "powerful": { "name": "Powerful" },
-      "econo": { "name": "Economy" },
-      "streamer": { "name": "Streamer" },
-      "quiet": { "name": "Quiet (outdoor)" },
-      "comfort": { "name": "Comfort mode" },
-      "sensor": { "name": "Sensor mode" },
-      "led": { "name": "LED" },
-      "swingv": { "name": "Vertical swing" },
-      "swingh": { "name": "Horizontal swing" }
+      "powerful": {
+        "name": "Powerful"
+      },
+      "econo": {
+        "name": "Economy"
+      },
+      "streamer": {
+        "name": "Streamer"
+      },
+      "quiet": {
+        "name": "Quiet (outdoor)"
+      },
+      "comfort": {
+        "name": "Comfort mode"
+      },
+      "sensor": {
+        "name": "Sensor mode"
+      },
+      "led": {
+        "name": "LED"
+      },
+      "swingv": {
+        "name": "Vertical swing"
+      },
+      "swingh": {
+        "name": "Horizontal swing"
+      }
     }
   }
 }
