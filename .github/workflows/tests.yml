@@ -14,8 +14,8 @@ jobs:
         # Current Home Assistant requires Python 3.14.
         python-version: ["3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
@@ -32,7 +32,7 @@ jobs:
     name: hassfest (manifest validation)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
@@ -43,7 +43,7 @@ jobs:
     # scope for a personal custom repository. hassfest is the hard gate.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hacs/action@main
         with:
           category: integration
