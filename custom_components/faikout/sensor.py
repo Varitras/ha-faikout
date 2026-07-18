@@ -96,6 +96,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    _energy("Whoutside", "energy_outside"),
     _energy("Whheating", "energy_heating"),
     _energy("Whcooling", "energy_cooling"),
     SensorEntityDescription(
@@ -128,15 +129,6 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    FaikoutSensorDescription(
-        key="energy",
-        translation_key="energy_total",
-        source="meta",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        factor=0.001,
     ),
     # Diagnostics (bare topic; 'protocol' from /status).
     _diag("ts", "last_report", device_class=SensorDeviceClass.TIMESTAMP),

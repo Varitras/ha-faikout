@@ -27,7 +27,7 @@
       "compressor": { "name": "Compressor" },
       "demand": { "name": "Demand" },
       "wifi_signal": { "name": "WiFi signal" },
-      "energy_total": { "name": "Energy total" },
+      "energy_outside": { "name": "Energy outside" },
       "last_report": { "name": "Last report" },
       "uptime": { "name": "Uptime" },
       "mqtt_up": { "name": "MQTT uptime" },
