@@ -207,14 +207,17 @@ DEMAND_STEP = 5
 
 
 def build_demand_command(value) -> dict:
-    return {"demand": int(value)}
+    # round, not int(): Home Assistant validates a number service call against
+    # min/max but not against the step, so an automation may pass any float in
+    # range. Truncating 54.999... would send 54 - a whole step below what was
+    # asked for, silently.
+    return {"demand": round(value)}
 
 
 # --- Temperature / entity sets ----------------------------------------------
 TEMP_MIN = 16.0
 TEMP_MAX = 32.0  # firmware HA discovery reports max_temp 32
 TEMP_STEP = 0.5
-TEMP_SENSORS = ["home", "outside", "inlet", "liquid"]
 SWITCH_FIELDS = [
     "powerful",
     "econo",

@@ -312,3 +312,24 @@ def test_effective_port_honours_an_explicit_choice():
 def test_effective_port_cannot_express_tls_on_1883():
     """Documented limitation, pinned so it is a decision and not a surprise."""
     assert const.effective_port(1883, True) == 8883
+
+
+# --- demand ------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (85, 85),
+        (85.0, 85),
+        (54.999999999999, 55),   # float arithmetic in an automation
+        (67.8, 68),
+        (67.2, 67),
+    ],
+)
+def test_build_demand_command_rounds(value, expected):
+    """A service call may carry any float in range, not just slider steps."""
+    assert const.build_demand_command(value) == {"demand": expected}
+
+
+def test_demand_bounds_match_the_device():
+    """The device offers 30..100 in steps of 5; anything below 30 is refused."""
+    assert (const.DEMAND_MIN, const.DEMAND_MAX, const.DEMAND_STEP) == (30, 100, 5)
