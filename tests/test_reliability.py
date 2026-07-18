@@ -21,6 +21,7 @@ from homeassistant.exceptions import (  # noqa: E402
     HomeAssistantError,
 )
 
+from custom_components.faikout.const import status_topic  # noqa: E402
 from custom_components.faikout.transport import (  # noqa: E402
     CONNECT_TIMEOUT,
     MqttConnectionRefused,
@@ -28,7 +29,7 @@ from custom_components.faikout.transport import (  # noqa: E402
     _is_failure,
 )
 
-from .conftest import TEST_HOST  # noqa: E402
+from .conftest import STATUS_PAYLOAD, TEST_HOST  # noqa: E402
 from .ha_helpers import make_transport, setup_integration  # noqa: E402
 
 CLIMATE = f"climate.{TEST_HOST}"
@@ -316,3 +317,178 @@ async def test_failed_reconnect_reports_disconnected(hass):
     transport._handle_connect(FakeReasonCode(5))
 
     assert seen == [False]
+
+
+# --- gaps the test-quality audit found --------------------------------------
+async def test_reconnect_resubscribes(hass):
+    """paho drops subscriptions on reconnect; they must be restored."""
+    transport = _transport(hass)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+    await transport.async_connect()
+    await transport.async_subscribe("state/x/status", lambda msg: None)
+    transport._client.subscribe.reset_mock()
+
+    transport._handle_connect(FakeReasonCode(0, failure=False))
+
+    subscribed = [c.args[0] for c in transport._client.subscribe.call_args_list]
+    assert "state/x/status" in subscribed
+
+
+async def test_paho_message_reaches_the_callback_on_the_event_loop(hass):
+    """The whole marshalling path: paho thread -> loop -> coordinator."""
+    transport = _transport(hass)
+    seen = []
+    await transport.async_subscribe("state/x/status", seen.append)
+
+    msg = type("M", (), {"topic": "state/x/status", "payload": b'{"temp": 21}'})()
+    transport._on_message(None, None, msg)
+    await hass.async_block_till_done()
+
+    assert len(seen) == 1
+    assert seen[0].topic == "state/x/status"
+    assert seen[0].payload == b'{"temp": 21}'
+
+
+async def test_options_change_reloads_the_entry(hass):
+    """Changing the update interval must actually take effect."""
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL
+
+    first = make_transport()
+    entry = await setup_integration(hass, first)
+    second = make_transport()
+
+    with patch(
+        "custom_components.faikout.create_transport", return_value=second
+    ):
+        hass.config_entries.async_update_entry(
+            entry, options={CONF_UPDATE_INTERVAL: 30}
+        )
+        await hass.async_block_till_done()
+
+    assert first.stopped, "the old transport was never torn down"
+    assert entry.runtime_data._min_interval == 30
+
+
+async def test_sensor_appears_when_field_shows_up_later(hass):
+    """Same dynamic-add contract as switches, which was only tested there."""
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if k != "hum"}
+    transport = make_transport(status=status)
+    await setup_integration(hass, transport)
+
+    entity_id = f"sensor.{TEST_HOST}_humidity"
+    assert hass.states.get(entity_id) is None
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"hum": 55}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state == "55"
+
+
+async def test_throttle_keeps_only_the_latest_of_several_updates(hass):
+    """Two messages inside one window must not schedule two flushes."""
+    import datetime
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL
+
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 60})
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 24}))
+    transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 25}))
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+
+    async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=61))
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 25
+
+
+async def test_discover_on_broker_collects_macs_and_cleans_up(hass):
+    """The threaded discovery itself, which the flow tests always mock away."""
+    from custom_components.faikout import transport as transport_module
+
+    created = {}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            created["client"] = self
+            self.stopped = False
+            self.disconnected = False
+
+        def username_pw_set(self, *args):
+            pass
+
+        def connect(self, host, port, keepalive):
+            self.on_connect(self, None, None, FakeReasonCode(0, failure=False))
+            self.on_message(
+                self,
+                None,
+                type("M", (), {"topic": "state/GuestAC", "payload": '{"id": "AABBCCDDEEFF"}'})(),
+            )
+
+        def subscribe(self, *args):
+            pass
+
+        def loop_start(self):
+            pass
+
+        def loop_stop(self):
+            self.stopped = True
+
+        def disconnect(self):
+            self.disconnected = True
+
+    with patch.object(paho, "Client", FakeClient):
+        hosts = await transport_module.async_discover_on_broker(
+            hass, "broker.invalid", 1883, None, None, 0
+        )
+
+    assert hosts == {"GuestAC": "AABBCCDDEEFF"}
+    assert created["client"].stopped, "network thread left running"
+    assert created["client"].disconnected, "connection left open"
+
+
+async def test_discover_on_broker_refusal_is_reported(hass):
+    """A refused CONNACK must not look like 'connected, nothing found'."""
+    from custom_components.faikout import transport as transport_module
+
+    class RefusingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def username_pw_set(self, *args):
+            pass
+
+        def connect(self, host, port, keepalive):
+            self.on_connect(self, None, None, FakeReasonCode(5))
+
+        def subscribe(self, *args):
+            pass
+
+        def loop_start(self):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+    with patch.object(paho, "Client", RefusingClient):
+        with pytest.raises(MqttConnectionRefused):
+            await transport_module.async_discover_on_broker(
+                hass, "broker.invalid", 1883, "u", "bad", 0
+            )
+
+
+async def test_first_state_is_not_delayed_by_the_throttle(hass):
+    """The throttle must not hold back the very first value after a restart."""
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL
+
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
+
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5

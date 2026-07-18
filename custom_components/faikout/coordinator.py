@@ -66,7 +66,11 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # (latest value always flushed via a trailing timer).
         self._min_interval = 0.0
         self._pending: dict | None = None
-        self._last_push = 0.0
+        # None = nothing pushed yet. Must not start at 0.0: loop.time() is a
+        # monotonic clock since boot, so on a machine that just started the
+        # elapsed check would be false and the very first state would be held
+        # back for a whole interval.
+        self._last_push: float | None = None
         self._flush_unsub = None
 
     @callback
@@ -171,6 +175,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     def _maybe_push(self) -> None:
         """Flush the latest state to HA, honouring the update-interval throttle."""
         if self._min_interval <= 0:
+            self._flush()
+            return
+        if self._last_push is None:
             self._flush()
             return
         now = self.hass.loop.time()
