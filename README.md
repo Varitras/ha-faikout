@@ -10,19 +10,57 @@ and exposes the unit as a proper climate device, with the sensors and toggles th
 Faikin/Faikout module  ──MQTT──>  broker  ──>  Home Assistant  ──>  this integration
 ```
 
-## Why not the firmware's own discovery?
+## First: you may not need this at all
 
-The firmware can announce itself via Home Assistant's MQTT discovery, and for many people that is enough.
-This integration exists for the cases where it is not:
+The firmware has **built-in Home Assistant support** and for most setups that is the better choice —
+nothing to install, and it is maintained alongside the firmware itself. Try that first.
+
+### The built-in route
+
+1. In the module's web interface, enable its Home Assistant / MQTT auto-discovery setting, and point the
+   module at your broker.
+2. In Home Assistant, have the **MQTT integration** configured against that same broker, with discovery
+   enabled (it is on by default).
+3. The unit appears by itself under *Settings → Devices & Services → MQTT*.
+
+The module then publishes retained discovery configs under the `homeassistant/` topic prefix. To check
+whether it is actually doing so:
+
+```bash
+mosquitto_sub -h your-broker -t 'homeassistant/#' -v
+```
+
+If entries scroll past, discovery is working and you are done — you do not need this integration.
+
+### What each route gives you
+
+Measured against a Faikin S21 unit; your model may report fewer fields.
+
+| | Built-in discovery | This integration |
+|---|---|---|
+| Climate entity | yes | yes |
+| Temperatures | outside, coil, plus the AC's own values | + inlet |
+| Energy | 3 counters | 3 counters, converted to kWh |
+| Switches | 9 | 9 |
+| Faikout-Auto toggle | **yes** | no |
+| Restart button, demand select | **yes** | no |
+| Diagnostics (uptime, memory, WiFi, IP, build, …) | no | **14 entities** |
+| Broker separate from Home Assistant's | no | **yes** |
+| Update-rate throttle | no | **yes** |
+
+So the built-in route is *not* a subset — it exposes a Faikout-Auto switch, a restart button and a demand
+select that this integration does not have. Pick whichever matches what you need.
+
+### Reasons to use this integration instead
 
 - **A separate broker.** Home Assistant's MQTT integration connects to exactly one broker. If your Faikout
-  publishes to a different one, this integration can open its own connection to it.
-- **More fields.** Diagnostics, energy counters and the model-dependent toggles are exposed as typed
-  entities with the right device classes and units, rather than whatever discovery happens to send.
-- **Explicit control** over update rate, entity naming and which optional entities exist.
+  publishes to a different one, discovery cannot reach it; this integration can open its own connection.
+- **Diagnostics** as typed entities with proper device classes and units.
+- **Control over the update rate**, which matters if the recorder database is growing faster than you like.
 
-> If you enable both this integration **and** the firmware's MQTT discovery (`haenable`), you get two sets
-> of entities for the same unit. Turn one of them off.
+> **Do not run both.** Two sets of entities for one unit, with two entity IDs for every value, is a mess to
+> undo later. Turn the firmware's discovery off before adding this integration — and if you already had it
+> on, delete the MQTT device afterwards, since retained discovery configs otherwise bring it back.
 
 ## Requirements
 
