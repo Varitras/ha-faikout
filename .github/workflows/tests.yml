@@ -56,18 +56,13 @@ jobs:
       - uses: home-assistant/actions/hassfest@master
 
   hacs:
-    name: HACS validation (advisory)
+    name: HACS validation
     runs-on: ubuntu-latest
-    # Advisory: the hacsjson and integration_manifest checks cannot pass while
-    # this repository is private. HACS fetches those two files over
-    # raw.githubusercontent.com without authentication, which 404s for a private
-    # repo, so it sees no manifest at all. The files themselves are valid — the
-    # metadata checks that use the API all pass. Making the repo public is what
-    # fixes it. hassfest is the hard gate.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: hacs/action@main
         with:
           category: integration
+          # Drop this once brand/ has been submitted to home-assistant/brands;
+          # until that lands there is no icon for the check to find.
           ignore: brands
