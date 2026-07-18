@@ -260,3 +260,59 @@ async def test_discovery_refusal_maps_to_invalid_auth(hass):
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_subscribe_failure_asks_home_assistant_to_retry(hass):
+    """HA only retries on ConfigEntryNotReady; anything else is a hard failure."""
+    from homeassistant.exceptions import ConfigEntryNotReady as _NotReady
+
+    from custom_components.faikout.coordinator import FaikoutCoordinator
+
+    transport = make_transport()
+
+    async def _plain_error(topic, callback):
+        raise HomeAssistantError("MQTT is not enabled")
+
+    transport.async_subscribe = _plain_error
+
+    from custom_components.faikout.const import CONF_DEVICE_ID, CONF_HOST, DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    coordinator = FaikoutCoordinator(hass, entry, transport)
+
+    with pytest.raises(_NotReady):
+        await coordinator.async_start()
+
+
+async def test_stop_does_not_block_the_event_loop(hass):
+    """loop_stop() joins paho's thread, so it must run in an executor."""
+    transport = _transport(hass)
+    threads = []
+
+    def _record():
+        import threading
+
+        threads.append(threading.current_thread().name)
+
+    transport._client.loop_stop.side_effect = _record
+
+    await transport.async_stop()
+
+    assert threads, "loop_stop was never called"
+    assert threads[0] != "MainThread", f"loop_stop ran on {threads[0]}"
+
+
+async def test_failed_reconnect_reports_disconnected(hass):
+    """A refused reconnect must report the link as down on its own."""
+    transport = _transport(hass)
+    seen = []
+    transport.set_connection_listener(seen.append)
+
+    transport._handle_connect(FakeReasonCode(5))
+
+    assert seen == [False]

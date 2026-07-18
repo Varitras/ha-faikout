@@ -7,7 +7,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -74,13 +74,25 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_start(self) -> None:
         await self._transport.async_connect()
-        self._unsub = await self._transport.async_subscribe(
-            status_topic(self.host), self._message_received
-        )
-        # Second subscription: bare state/<host> for device metadata + LWT presence.
-        self._unsub_meta = await self._transport.async_subscribe(
-            state_topic(self.host), self._meta_received
-        )
+        try:
+            self._unsub = await self._transport.async_subscribe(
+                status_topic(self.host), self._message_received
+            )
+            # Second subscription: bare state/<host> for device metadata + LWT.
+            self._unsub_meta = await self._transport.async_subscribe(
+                state_topic(self.host), self._meta_received
+            )
+        except ConfigEntryNotReady:
+            raise
+        except Exception as err:
+            # Home Assistant only retries a config entry with backoff when setup
+            # raises ConfigEntryNotReady. HA's own mqtt.async_subscribe raises a
+            # plain HomeAssistantError while its broker connection is still
+            # coming up (common on a restart), which would otherwise leave this
+            # entry permanently in SETUP_ERROR until reloaded by hand.
+            raise ConfigEntryNotReady(
+                f"Cannot subscribe to the topics for {self.host}: {err}"
+            ) from err
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:

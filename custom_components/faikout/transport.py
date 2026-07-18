@@ -227,6 +227,10 @@ class OwnMqttTransport(FaikoutTransport):
         if self._connack is not None and not self._connack.done():
             self._connack.set_result(reason_code)
         if failed:
+            # Notify here too. Today paho always fires on_disconnect first, so
+            # the coordinator already knows, but relying on that ordering makes
+            # the state depend on someone else's implementation detail.
+            self._notify()
             return
         # Re-subscribe: paho drops subscriptions on reconnect.
         for topic in self._subs:
@@ -274,8 +278,14 @@ class OwnMqttTransport(FaikoutTransport):
             )
 
     async def async_stop(self) -> None:
+        # loop_stop() joins paho's network thread with no timeout, and that
+        # thread only notices between select() calls (up to ~1s). Running it on
+        # the event loop would stall all of Home Assistant for that long.
+        await self.hass.async_add_executor_job(self._stop_client)
+
+    def _stop_client(self) -> None:
         self._client.loop_stop()
-        await self.hass.async_add_executor_job(self._client.disconnect)
+        self._client.disconnect()
 
 
 async def async_discover_on_broker(
