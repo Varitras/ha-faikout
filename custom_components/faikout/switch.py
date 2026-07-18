@@ -9,6 +9,11 @@ from .const import SWITCH_FIELDS, build_switch_command
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
+# Controls that many AC models report but do not actually act on. The LED
+# control is ignored by S21 units (verified live: neither control JSON nor the
+# firmware's own command/<host>/led changes it), so it is disabled by default.
+_DISABLED_BY_DEFAULT = {"led"}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -40,6 +45,8 @@ class FaikoutSwitch(FaikoutEntity, SwitchEntity):
         self._field = field
         self._attr_translation_key = field
         self._attr_unique_id = f"{coordinator.host}_{field}"
+        if field in _DISABLED_BY_DEFAULT:
+            self._attr_entity_registry_enabled_default = False
 
     @property
     def is_on(self) -> bool:
