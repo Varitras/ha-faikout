@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -37,7 +38,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     def __init__(
         self,
         hass: HomeAssistant,
-        entry: "FaikoutConfigEntry",
+        entry: FaikoutConfigEntry,
         transport: FaikoutTransport,
     ) -> None:
         host = entry.data[CONF_HOST]
@@ -48,8 +49,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self.device_id = entry.data.get(CONF_DEVICE_ID) or host
         self.mac = entry.data.get(CONF_MAC)
         self._transport = transport
-        self._unsub = None
-        self._unsub_meta = None
+        self._unsub: Callable[[], None] | None = None
+        self._unsub_meta: Callable[[], None] | None = None
         self._first_data = asyncio.Event()
         # Device metadata (model/firmware/MAC) from the bare state/<host> topic.
         self.device_meta: dict = {}
@@ -72,7 +73,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # elapsed check would be false and the very first state would be held
         # back for a whole interval.
         self._last_push: float | None = None
-        self._flush_unsub = None
+        self._flush_unsub: Callable[[], None] | None = None
 
     @callback
     def set_update_interval(self, seconds) -> None:

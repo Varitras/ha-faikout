@@ -1,0 +1,23 @@
+# Lint configuration. 100 columns rather than the default 88: the existing code
+# is written to that width, and reflowing it would produce a large diff without
+# making anything clearer.
+line-length = 100
+target-version = "py313"
+
+[lint]
+select = [
+  "E",    # pycodestyle
+  "F",    # pyflakes
+  "W",    # warnings
+  "I",    # import sorting
+  "UP",   # pyupgrade
+  "B",    # bugbear
+  "SIM",  # simplifications
+  "RET",  # return statements
+  "C4",   # comprehensions
+]
+
+[lint.per-file-ignores]
+# Test modules import Home Assistant only after pytest.importorskip, so the
+# imports cannot sit at the top of the file.
+"tests/*" = ["E402"]

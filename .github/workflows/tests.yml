@@ -22,6 +22,7 @@ jobs:
           - label: current HA
             python-version: "3.14"
             phcc: ""
+            coverage: "--cov=custom_components/faikout --cov-fail-under=90"
           # Guards the minimum version claimed in hacs.json and the README.
           # Each pytest-homeassistant-custom-component release pins exactly one
           # Home Assistant version, so the minimum is selected by pinning phcc:
@@ -31,6 +32,7 @@ jobs:
           - label: minimum HA 2025.3
             python-version: "3.13"
             phcc: "==0.13.221"
+            coverage: ""
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -43,10 +45,27 @@ jobs:
           # homeassistant and provides the `hass` fixture the integration tests
           # need; paho-mqtt is needed for the own-MQTT transport test.
           pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}" paho-mqtt
+          pip install pytest-cov
       - name: Show versions under test
         run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
       - name: Run tests
-        run: python -m pytest -q
+        # The floor sits below the current figure on purpose: it is there to
+        # catch untested new code, not to make every refactor a coverage debate.
+        run: python -m pytest -q ${{ matrix.coverage }}
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install ruff
+      # Only the linter, deliberately not `ruff format --check`: adopting the
+      # formatter would reflow nearly every file at once, which buries real
+      # changes in churn without making anything clearer.
+      - run: ruff check .
 
   hassfest:
     name: hassfest (manifest validation)

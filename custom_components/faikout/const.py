@@ -265,7 +265,8 @@ def parse_device_meta(payload) -> dict | None:
 def hvac_mode_from_state(data: dict) -> str | None:
     if not data.get("power", False):
         return HVAC_OFF
-    return MODE_DEV_TO_HA.get(data.get("mode"))
+    mode = data.get("mode")
+    return MODE_DEV_TO_HA.get(mode) if isinstance(mode, str) else None
 
 
 def hvac_action_from_state(data: dict) -> str:

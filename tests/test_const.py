@@ -27,7 +27,9 @@ def test_topic_helpers():
 
 
 def test_mode_mapping_roundtrip():
-    assert const.MODE_DEV_TO_HA == {"H": "heat", "C": "cool", "A": "auto", "D": "dry", "F": "fan_only"}
+    assert const.MODE_DEV_TO_HA == {
+        "H": "heat", "C": "cool", "A": "auto", "D": "dry", "F": "fan_only",
+    }
     assert const.MODE_HA_TO_DEV["heat"] == "H"
     assert const.MODE_HA_TO_DEV["fan_only"] == "F"
     assert const.HVAC_MODES[0] == "off"
@@ -36,7 +38,9 @@ def test_mode_mapping_roundtrip():
 # "quiet" is a separate boolean flag on the device, not a fan value: fan
 # stays "A"/"auto" while the quiet switch toggles independently. A legacy
 # "Q" fan value maps to auto.
-@pytest.mark.parametrize("dev,ha", [("A", "auto"), ("Q", "auto"), ("a", "auto"), (1, "1"), ("3", "3")])
+@pytest.mark.parametrize(
+    "dev,ha", [("A", "auto"), ("Q", "auto"), ("a", "auto"), (1, "1"), ("3", "3")]
+)
 def test_fan_dev_to_ha(dev, ha):
     assert const.fan_dev_to_ha(dev) == ha
 
@@ -157,7 +161,8 @@ def test_build_switch_command():
 
 # --- merge_state ---
 def test_merge_state_json():
-    assert const.merge_state({"power": False}, '{"power": true, "temp": 21}') == {"power": True, "temp": 21}
+    merged = const.merge_state({"power": False}, '{"power": true, "temp": 21}')
+    assert merged == {"power": True, "temp": 21}
 
 
 def test_merge_state_presence_false():

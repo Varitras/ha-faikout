@@ -11,7 +11,9 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_DEVICE_ID,
     CONF_HOST,
+    CONF_MAC,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -22,12 +24,10 @@ from .const import (
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
     DEFAULT_UPDATE_INTERVAL,
-    effective_port,
     DISCOVERY_TOPIC,
-    CONF_DEVICE_ID,
-    CONF_MAC,
     DOMAIN,
     device_id_for,
+    effective_port,
     is_valid_host,
     normalize_mac,
 )
@@ -101,7 +101,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry) -> "FaikoutOptionsFlow":
+    def async_get_options_flow(config_entry) -> FaikoutOptionsFlow:
         return FaikoutOptionsFlow()
 
     def __init__(self) -> None:

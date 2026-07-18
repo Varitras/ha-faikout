@@ -13,13 +13,12 @@ pytest.importorskip("pytest_homeassistant_custom_component.common")
 paho = pytest.importorskip("paho.mqtt.client")
 
 from homeassistant.const import STATE_UNAVAILABLE  # noqa: E402
-from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
-
 from homeassistant.exceptions import (  # noqa: E402
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
     HomeAssistantError,
 )
+from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
 from custom_components.faikout.const import status_topic  # noqa: E402
 from custom_components.faikout.transport import (  # noqa: E402
@@ -105,9 +104,11 @@ async def test_connect_waits_for_connack(hass):
     """A silent broker must time out, not count as connected."""
     transport = _transport(hass)  # no CONNACK is ever delivered
 
-    with patch("custom_components.faikout.transport.CONNECT_TIMEOUT", 0.05):
-        with pytest.raises(ConfigEntryNotReady, match="CONNACK"):
-            await transport.async_connect()
+    with (
+        patch("custom_components.faikout.transport.CONNECT_TIMEOUT", 0.05),
+        pytest.raises(ConfigEntryNotReady, match="CONNACK"),
+    ):
+        await transport.async_connect()
 
     assert not transport._connected
     assert CONNECT_TIMEOUT >= 1  # the shipped default is not a test value
@@ -477,11 +478,10 @@ async def test_discover_on_broker_refusal_is_reported(hass):
         def disconnect(self):
             pass
 
-    with patch.object(paho, "Client", RefusingClient):
-        with pytest.raises(MqttConnectionRefused):
-            await transport_module.async_discover_on_broker(
-                hass, "broker.invalid", 1883, "u", "bad", 0
-            )
+    with patch.object(paho, "Client", RefusingClient), pytest.raises(MqttConnectionRefused):
+        await transport_module.async_discover_on_broker(
+            hass, "broker.invalid", 1883, "u", "bad", 0
+        )
 
 
 async def test_first_state_is_not_delayed_by_the_throttle(hass):

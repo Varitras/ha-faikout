@@ -14,9 +14,9 @@ from custom_components.faikout.const import (
     CONF_MAC,
     CONF_UPDATE_INTERVAL,
     DOMAIN,
+    device_id_for,
     state_topic,
     status_topic,
-    device_id_for,
 )
 
 from .conftest import META_PAYLOAD, STATUS_PAYLOAD, TEST_HOST, FakeTransport
