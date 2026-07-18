@@ -92,10 +92,25 @@ The config flow first asks **how** Home Assistant should reach the module:
 Either way the integration then listens briefly on `state/+` and offers the modules it found. You can also
 type the hostname by hand — it is the middle part of the topics, the `GuestAC` in `state/GuestAC`.
 
-> **The own-broker mode is LAN only.** It speaks plain MQTT — there is no TLS option, so the broker
-> credentials and all control traffic travel unencrypted. Never use it across the internet. For a remote
-> broker, point Home Assistant's own MQTT integration at it (which does support TLS) and pick the first
-> option instead.
+#### TLS
+
+The own-broker mode can encrypt the connection. Two switches, because they are not the same decision:
+
+- **Use TLS** — encrypts the connection. The port moves to 8883 unless you set one yourself.
+- **Do not verify the certificate** — accepts any certificate the broker presents.
+
+Brokers commonly ship with a self-signed demo certificate (EMQX's, for instance, is issued to
+`CN=localhost` by an untrusted root) which no client will accept on its own. The second switch exists for
+that case, but be clear about what it costs: the traffic is still encrypted, yet an attacker on your
+network who impersonates the broker cannot be detected — and they would receive your credentials. It
+protects against someone passively listening, not against someone actively interfering.
+
+For a connection you can actually trust, replace the broker's certificate with one from your own CA (or a
+publicly trusted one if the broker has a DNS name), issued to the name you connect to, and leave
+verification on.
+
+> **Without TLS this mode is LAN only.** Plain MQTT sends the broker credentials and all control traffic
+> in the clear. Never use it across the internet unencrypted.
 
 ### Options
 
@@ -105,7 +120,8 @@ Reachable later via *Configure* on the integration entry:
   The module reports on every change, which for a running unit is more often than most people need and
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
-- **Own MQTT client** — switch an existing entry between the two transports, with the broker details.
+- **Own MQTT client** — switch an existing entry between the two transports, with the broker details and
+  the TLS switches described above.
 
 ## Entities
 
@@ -125,7 +141,8 @@ settings if you want them.
 - **The LED switch is disabled by default.** On S21 units a LED-only command does not trigger a frame to
   the indoor unit, so the new value only takes effect alongside the next real change. That makes it
   unreliable as a standalone switch.
-- **No TLS** in own-broker mode, see above.
+- **TLS has no way to pin a specific certificate.** It either verifies against the usual trust stores or
+  not at all; there is no field for a custom CA file.
 - **Faikout-Auto is not exposed** (target range, external reference, schedules). Use the module's own web
   interface for that.
 - Two modules with the same hostname on different brokers are told apart by their MAC address, which is

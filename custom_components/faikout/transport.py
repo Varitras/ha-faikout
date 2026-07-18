@@ -32,10 +32,13 @@ from .const import (
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
+    CONF_MQTT_TLS,
+    CONF_MQTT_TLS_INSECURE,
     CONF_MQTT_USERNAME,
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
     DISCOVERY_TOPIC,
+    effective_port,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -170,6 +173,8 @@ class OwnMqttTransport(FaikoutTransport):
         port: int,
         username: str | None,
         password: str | None,
+        tls: bool = False,
+        tls_insecure: bool = False,
     ) -> None:
         # Imported lazily so the module loads even where paho is unavailable and
         # this transport is not used. paho ships with HA's MQTT integration.
@@ -179,6 +184,8 @@ class OwnMqttTransport(FaikoutTransport):
         self.hass = hass
         self._host = host
         self._port = port
+        self._tls = tls
+        self._tls_insecure = tls_insecure
         self._subs: dict[str, Callable[[FaikoutMessage], None]] = {}
         self._connected = False
         self._listener: Callable[[bool], None] | None = None
@@ -193,6 +200,25 @@ class OwnMqttTransport(FaikoutTransport):
     def set_connection_listener(self, listener) -> None:
         self._listener = listener
 
+    def _setup_tls(self) -> None:
+        """Arm TLS on the client. Runs in an executor: this touches the disk."""
+        import ssl
+
+        if self._tls_insecure:
+            # CERT_NONE alone still leaves paho checking the hostname, and
+            # tls_insecure_set alone still requires a trusted chain. A
+            # self-signed broker certificate needs both switched off.
+            self._client.tls_set(cert_reqs=ssl.CERT_NONE)
+            self._client.tls_insecure_set(True)
+            _LOGGER.warning(
+                "TLS certificate checks are disabled for %s:%s. The connection "
+                "is encrypted but an impersonated broker cannot be detected",
+                self._host,
+                self._port,
+            )
+        else:
+            self._client.tls_set()
+
     async def async_connect(self) -> None:
         """Connect and wait for the broker to actually accept us.
 
@@ -200,6 +226,10 @@ class OwnMqttTransport(FaikoutTransport):
         rejects the credentials does so in the CONNACK, so treating connect()
         as success would leave the entry loaded with a dead connection.
         """
+        if self._tls:
+            # tls_set() reads the CA bundle from disk, so it must not run on the
+            # event loop.
+            await self.hass.async_add_executor_job(self._setup_tls)
         self._connack = self.hass.loop.create_future()
         try:
             await self.hass.async_add_executor_job(
@@ -316,6 +346,8 @@ async def async_discover_on_broker(
     username: str | None,
     password: str | None,
     seconds: float = 3.0,
+    tls: bool = False,
+    tls_insecure: bool = False,
 ) -> dict[str, str | None]:
     """Briefly connect to a broker and collect Faikout modules from state/+.
 
@@ -339,6 +371,14 @@ async def async_discover_on_broker(
         client = paho.Client(paho.CallbackAPIVersion.VERSION2)
         if username:
             client.username_pw_set(username, password or None)
+        if tls:
+            import ssl
+
+            if tls_insecure:
+                client.tls_set(cert_reqs=ssl.CERT_NONE)
+                client.tls_insecure_set(True)
+            else:
+                client.tls_set()
 
         connected = threading.Event()
         result: dict = {}
@@ -375,11 +415,14 @@ def create_transport(hass: HomeAssistant, entry) -> FaikoutTransport:
     """Pick the transport from the config entry options."""
     options = entry.options
     if options.get(CONF_USE_OWN_MQTT) and options.get(CONF_MQTT_HOST):
+        tls = bool(options.get(CONF_MQTT_TLS))
         return OwnMqttTransport(
             hass,
             options[CONF_MQTT_HOST],
-            int(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
+            effective_port(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT), tls),
             options.get(CONF_MQTT_USERNAME) or None,
             options.get(CONF_MQTT_PASSWORD) or None,
+            tls,
+            bool(options.get(CONF_MQTT_TLS_INSECURE)),
         )
     return HaMqttTransport(hass)

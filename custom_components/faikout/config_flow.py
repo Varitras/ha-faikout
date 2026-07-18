@@ -15,11 +15,14 @@ from .const import (
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
+    CONF_MQTT_TLS,
+    CONF_MQTT_TLS_INSECURE,
     CONF_MQTT_USERNAME,
     CONF_UPDATE_INTERVAL,
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
     DEFAULT_UPDATE_INTERVAL,
+    effective_port,
     DISCOVERY_TOPIC,
     CONF_DEVICE_ID,
     CONF_MAC,
@@ -45,6 +48,8 @@ def _broker_from_input(user_input: dict) -> dict:
         CONF_MQTT_PORT: int(user_input.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
         CONF_MQTT_USERNAME: user_input.get(CONF_MQTT_USERNAME, ""),
         CONF_MQTT_PASSWORD: user_input.get(CONF_MQTT_PASSWORD, ""),
+        CONF_MQTT_TLS: bool(user_input.get(CONF_MQTT_TLS, False)),
+        CONF_MQTT_TLS_INSECURE: bool(user_input.get(CONF_MQTT_TLS_INSECURE, False)),
     }
 
 
@@ -69,6 +74,13 @@ def _broker_schema(defaults=None) -> vol.Schema:
             vol.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
             ),
+            vol.Optional(
+                CONF_MQTT_TLS, default=d.get(CONF_MQTT_TLS, False)
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_MQTT_TLS_INSECURE,
+                default=d.get(CONF_MQTT_TLS_INSECURE, False),
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -175,10 +187,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._discovered = await async_discover_on_broker(
                     self.hass,
                     broker[CONF_MQTT_HOST],
-                    broker[CONF_MQTT_PORT],
+                    effective_port(broker[CONF_MQTT_PORT], broker[CONF_MQTT_TLS]),
                     broker[CONF_MQTT_USERNAME] or None,
                     broker[CONF_MQTT_PASSWORD] or None,
                     DISCOVERY_SECONDS,
+                    broker[CONF_MQTT_TLS],
+                    broker[CONF_MQTT_TLS_INSECURE],
                 )
             except MqttConnectionRefused as err:
                 _LOGGER.debug("Broker refused the connection", exc_info=True)
@@ -212,10 +226,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 await async_discover_on_broker(
                     self.hass,
                     broker[CONF_MQTT_HOST],
-                    broker[CONF_MQTT_PORT],
+                    effective_port(broker[CONF_MQTT_PORT], broker[CONF_MQTT_TLS]),
                     broker[CONF_MQTT_USERNAME] or None,
                     broker[CONF_MQTT_PASSWORD] or None,
                     DISCOVERY_SECONDS,
+                    broker[CONF_MQTT_TLS],
+                    broker[CONF_MQTT_TLS_INSECURE],
                 )
             except MqttConnectionRefused as err:
                 errors["base"] = (
@@ -338,6 +354,13 @@ class FaikoutOptionsFlow(OptionsFlow):
                         type=selector.TextSelectorType.PASSWORD
                     )
                 ),
+                vol.Optional(
+                    CONF_MQTT_TLS, default=o.get(CONF_MQTT_TLS, False)
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MQTT_TLS_INSECURE,
+                    default=o.get(CONF_MQTT_TLS_INSECURE, False),
+                ): selector.BooleanSelector(),
             }
         )
         return self.async_show_form(

@@ -16,6 +16,8 @@ from custom_components.faikout.const import (  # noqa: E402
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
+    CONF_MQTT_TLS,
+    CONF_MQTT_TLS_INSECURE,
     CONF_MQTT_USERNAME,
     CONF_UPDATE_INTERVAL,
     CONF_USE_OWN_MQTT,
@@ -134,6 +136,8 @@ BROKER = {
     CONF_MQTT_PORT: 1883,
     CONF_MQTT_USERNAME: "user",
     CONF_MQTT_PASSWORD: "secret",
+    CONF_MQTT_TLS: False,
+    CONF_MQTT_TLS_INSECURE: False,
 }
 
 
@@ -368,3 +372,39 @@ async def test_hostname_entry_blocks_adding_the_same_module_by_mac(hass):
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# --- TLS ----------------------------------------------------------------------
+async def test_tls_switch_is_stored_and_moves_the_port(hass, mock_setup_entry):
+    """Ticking TLS must not leave the connection on the plaintext port."""
+    from custom_components.faikout.transport import async_discover_on_broker  # noqa: F401
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+
+    seen = {}
+
+    async def _capture(hass_, host, port, user, pw, seconds, tls=False, insecure=False):
+        seen.update(port=port, tls=tls, insecure=insecure)
+        return {TEST_HOST: None}
+
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker", _capture
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {**BROKER, CONF_MQTT_TLS: True, CONF_MQTT_TLS_INSECURE: True},
+        )
+
+    # Discovery already has to speak TLS, or a TLS-only broker is unreachable.
+    assert seen == {"port": 8883, "tls": True, "insecure": True}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+    assert result["options"][CONF_MQTT_TLS] is True
+    assert result["options"][CONF_MQTT_TLS_INSECURE] is True
+    # The stored port stays what the user entered; 8883 is derived on use.
+    assert result["options"][CONF_MQTT_PORT] == 1883

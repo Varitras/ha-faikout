@@ -508,3 +508,91 @@ async def test_going_offline_is_not_delayed_by_the_throttle(hass):
     await hass.async_block_till_done()
 
     assert hass.states.get(CLIMATE).state == _UNAVAILABLE
+
+
+# --- TLS ---------------------------------------------------------------------
+def _tls_transport(hass, tls=True, insecure=False):
+    with patch("paho.mqtt.client.Client"):
+        return OwnMqttTransport(
+            hass, "broker.invalid", 8883, "u", "p", tls, insecure
+        )
+
+
+async def test_tls_is_armed_before_connecting(hass):
+    transport = _tls_transport(hass)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+
+    await transport.async_connect()
+
+    assert transport._client.tls_set.called
+    # Verification stays on unless explicitly disabled.
+    assert not transport._client.tls_insecure_set.called
+    assert transport._client.tls_set.call_args.kwargs == {}
+
+
+async def test_insecure_turns_off_both_checks(hass):
+    """Chain and hostname both have to go, or a self-signed cert still fails."""
+    import ssl
+
+    transport = _tls_transport(hass, insecure=True)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+
+    await transport.async_connect()
+
+    assert transport._client.tls_set.call_args.kwargs["cert_reqs"] == ssl.CERT_NONE
+    transport._client.tls_insecure_set.assert_called_once_with(True)
+
+
+async def test_no_tls_leaves_the_client_untouched(hass):
+    transport = _tls_transport(hass, tls=False)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+
+    await transport.async_connect()
+
+    assert not transport._client.tls_set.called
+
+
+async def test_tls_setup_runs_off_the_event_loop(hass):
+    """tls_set() reads the CA bundle from disk."""
+    import threading
+
+    transport = _tls_transport(hass)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+    threads = []
+    transport._client.tls_set.side_effect = lambda *a, **k: threads.append(
+        threading.current_thread().name
+    )
+
+    await transport.async_connect()
+
+    assert threads and threads[0] != "MainThread", f"tls_set ran on {threads}"
+
+
+async def test_transport_selection_passes_tls_options(hass):
+    """The stored options must actually reach the client."""
+    from custom_components.faikout.const import (
+        CONF_MQTT_HOST,
+        CONF_MQTT_PORT,
+        CONF_MQTT_TLS,
+        CONF_MQTT_TLS_INSECURE,
+        CONF_USE_OWN_MQTT,
+    )
+    from custom_components.faikout.transport import create_transport
+
+    entry = MockConfigEntry(
+        domain="faikout",
+        data={"host": TEST_HOST},
+        options={
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_TLS: True,
+            CONF_MQTT_TLS_INSECURE: True,
+        },
+    )
+    with patch("paho.mqtt.client.Client"):
+        transport = create_transport(hass, entry)
+
+    assert transport._tls is True
+    assert transport._tls_insecure is True
+    assert transport._port == 8883, "the plaintext default was not moved to TLS"

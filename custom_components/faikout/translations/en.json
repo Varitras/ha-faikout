@@ -18,12 +18,14 @@
       },
       "own_mqtt": {
         "title": "MQTT broker",
-        "description": "Connection details for the broker the Faikout publishes to. The integration will connect to it directly.",
+        "description": "Connection details for the broker the Faikout publishes to. The integration will connect to it directly. With TLS enabled the port moves to 8883 unless you set one yourself.",
         "data": {
           "mqtt_host": "Broker host",
           "mqtt_port": "Port",
           "mqtt_username": "Username",
-          "mqtt_password": "Password"
+          "mqtt_password": "Password",
+          "mqtt_tls": "Use TLS (encrypted connection)",
+          "mqtt_tls_insecure": "Do not verify the certificate (needed for self-signed)"
         }
       },
       "own_host": {
@@ -40,7 +42,9 @@
           "mqtt_host": "Broker host",
           "mqtt_port": "Port",
           "mqtt_username": "Username",
-          "mqtt_password": "Password"
+          "mqtt_password": "Password",
+          "mqtt_tls": "Use TLS (encrypted connection)",
+          "mqtt_tls_insecure": "Do not verify the certificate (needed for self-signed)"
         }
       }
     },
@@ -65,7 +69,9 @@
           "mqtt_host": "MQTT broker host",
           "mqtt_port": "MQTT port",
           "mqtt_username": "MQTT username",
-          "mqtt_password": "MQTT password"
+          "mqtt_password": "MQTT password",
+          "mqtt_tls": "Use TLS (encrypted connection)",
+          "mqtt_tls_insecure": "Do not verify the certificate (needed for self-signed)"
         }
       }
     },

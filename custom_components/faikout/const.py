@@ -43,7 +43,29 @@ CONF_MQTT_HOST = "mqtt_host"
 CONF_MQTT_PORT = "mqtt_port"
 CONF_MQTT_USERNAME = "mqtt_username"
 CONF_MQTT_PASSWORD = "mqtt_password"
+# Encrypt the connection to an own broker. Off by default, because a broker on
+# the LAN commonly has no usable certificate.
+CONF_MQTT_TLS = "mqtt_tls"
+# Accept any certificate. Needed for the self-signed certificate brokers ship
+# with (EMQX's demo certificate says CN=localhost and is signed by nobody you
+# trust), at the cost of not being able to detect an impersonated broker.
+CONF_MQTT_TLS_INSECURE = "mqtt_tls_insecure"
 DEFAULT_MQTT_PORT = 1883
+DEFAULT_MQTT_TLS_PORT = 8883
+
+
+def effective_port(port, tls: bool) -> int:
+    """Port to actually use, moving to 8883 when TLS is switched on.
+
+    The port field keeps its plaintext default of 1883 when a user ticks TLS,
+    which would then just fail to connect. Only the untouched default is
+    adjusted — an explicitly chosen port is always honoured, since running MQTTS
+    on a non-standard port is a legitimate setup.
+    """
+    port = int(port)
+    if tls and port == DEFAULT_MQTT_PORT:
+        return DEFAULT_MQTT_TLS_PORT
+    return port
 
 
 def normalize_mac(mac) -> str | None:

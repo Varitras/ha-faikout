@@ -286,3 +286,19 @@ def test_device_metadata_truncates_text_fields():
 def test_default_update_interval_coalesces():
     """Default is a throttle, not real-time: 10s, and 0 stays available."""
     assert const.DEFAULT_UPDATE_INTERVAL == 10
+
+
+# --- TLS port handling ------------------------------------------------------
+def test_effective_port_moves_untouched_default_to_tls_port():
+    assert const.effective_port(1883, True) == 8883
+
+
+def test_effective_port_keeps_plain_default_without_tls():
+    assert const.effective_port(1883, False) == 1883
+
+
+def test_effective_port_honours_an_explicit_choice():
+    """MQTTS on a non-standard port is legitimate and must not be overridden."""
+    assert const.effective_port(9001, True) == 9001
+    assert const.effective_port(8883, True) == 8883
+    assert const.effective_port(9001, False) == 9001
