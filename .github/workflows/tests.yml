@@ -38,9 +38,12 @@ jobs:
   hacs:
     name: HACS validation (advisory)
     runs-on: ubuntu-latest
-    # Advisory: full HACS default-store validation needs the Home Assistant
-    # brands repo entry (external PR) and published releases, which are out of
-    # scope for a personal custom repository. hassfest is the hard gate.
+    # Advisory: the hacsjson and integration_manifest checks cannot pass while
+    # this repository is private. HACS fetches those two files over
+    # raw.githubusercontent.com without authentication, which 404s for a private
+    # repo, so it sees no manifest at all. The files themselves are valid — the
+    # metadata checks that use the API all pass. Making the repo public is what
+    # fixes it. hassfest is the hard gate.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
