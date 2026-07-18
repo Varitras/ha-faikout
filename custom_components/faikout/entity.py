@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import (
 )
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, device_metadata
+from .const import DOMAIN, device_metadata, normalize_mac
 from .coordinator import FaikoutCoordinator
 
 
@@ -24,7 +24,7 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
     def _build_device_info(self) -> DeviceInfo:
         coordinator = self.coordinator
         meta = device_metadata(coordinator.device_meta)
-        mac = meta["mac"] or coordinator.mac
+        mac = meta["mac"] or normalize_mac(coordinator.mac)
         connections = (
             {(CONNECTION_NETWORK_MAC, format_mac(mac))} if mac else set()
         )

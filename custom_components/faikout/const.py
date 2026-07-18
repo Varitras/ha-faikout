@@ -9,6 +9,14 @@ from __future__ import annotations
 import json
 
 DOMAIN = "faikout"
+
+# Bounds on what a device may push into long-lived state. Anything on the state
+# topics is untrusted: the module is an ESP32 on the LAN, and on a broker without
+# per-topic ACLs any client can publish there. Legitimate status frames are well
+# under a kilobyte and carry a few dozen fields.
+MAX_PAYLOAD_CHARS = 16384
+MAX_STATE_FIELDS = 256
+MAX_META_TEXT = 64
 PLATFORMS = ["climate", "sensor", "switch"]
 CONF_HOST = "host"
 # Stable per-module identity (MAC when known, hostname otherwise). Everything
@@ -186,13 +194,22 @@ def device_metadata(meta: dict) -> dict:
     (hardware variant) and ``id`` (MAC). ``/status`` does not, so device info is
     sourced from here. Missing keys yield ``None``.
     """
-    app = meta.get("app") or "Faikout"
-    suffix = (meta.get("build-suffix") or "").lstrip("-").strip()
+    def _text(value):
+        # These end up in the persisted device registry, so they are truncated
+        # rather than trusted at whatever length the device sent.
+        if value is None:
+            return ""
+        return str(value)[:MAX_META_TEXT]
+
+    app = _text(meta.get("app")) or "Faikout"
+    suffix = _text(meta.get("build-suffix")).lstrip("-").strip()
     model = f"{app} {suffix}".strip() if suffix else app
     return {
         "model": model or None,
-        "sw_version": meta.get("version") or None,
-        "mac": meta.get("id") or None,
+        "sw_version": _text(meta.get("version")) or None,
+        # Normalised here too, not just at config-entry creation: this value
+        # reaches the device registry and format_mac on every metadata change.
+        "mac": normalize_mac(meta.get("id")),
     }
 
 
@@ -252,11 +269,20 @@ def merge_state(current: dict | None, payload: str) -> dict | None:
     if payload in ("true", "false"):
         data["online"] = payload == "true"
         return data
+    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
+        # Refuse oversized payloads before parsing: a huge object of distinct
+        # keys costs real time on the event loop and would be merged in below.
+        return None
     try:
         parsed = json.loads(payload)
     except (ValueError, TypeError):
         return None
     if not isinstance(parsed, dict):
         return None
-    data.update(parsed)
+    for key, value in parsed.items():
+        # Known fields always update; new ones only until the cap. Without this
+        # a device streaming fresh key names grows this dict without limit for
+        # the lifetime of the config entry.
+        if key in data or len(data) < MAX_STATE_FIELDS:
+            data[key] = value
     return data

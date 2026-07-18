@@ -13,6 +13,8 @@ pytest.importorskip("pytest_homeassistant_custom_component.common")
 paho = pytest.importorskip("paho.mqtt.client")
 
 from homeassistant.const import STATE_UNAVAILABLE  # noqa: E402
+from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
+
 from homeassistant.exceptions import (  # noqa: E402
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
@@ -157,13 +159,53 @@ async def test_entities_go_unavailable_when_broker_link_drops(hass):
     coordinator = entry.runtime_data
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
 
-    coordinator._transport_connection_changed(False)
+    # Go through the listener the transport was handed, not the coordinator's
+    # own method: that wiring is the part that would silently break.
+    assert transport.listener is not None, "coordinator never registered a listener"
+    del coordinator
+
+    transport.listener(False)
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
-    coordinator._transport_connection_changed(True)
+    transport.listener(True)
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+async def test_setup_releases_transport_when_subscribing_fails(hass):
+    """A failure part way through async_start() must not leak the connection."""
+    transport = make_transport()
+    calls = {"n": 0}
+    real_subscribe = transport.async_subscribe
+
+    async def _fail_on_second(topic, callback):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("subscribe failed")
+        return await real_subscribe(topic, callback)
+
+    transport.async_subscribe = _fail_on_second
+
+    from homeassistant.config_entries import ConfigEntryState
+
+    from custom_components.faikout.const import CONF_DEVICE_ID, CONF_HOST, DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.faikout.create_transport", return_value=transport
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is not ConfigEntryState.LOADED
+    assert transport.connected, "precondition: the connection was established"
+    assert transport.stopped, "the established connection was left open"
 
 
 # --- late device metadata ----------------------------------------------------

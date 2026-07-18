@@ -64,7 +64,8 @@ def test_device_metadata_from_bare_status():
     assert const.device_metadata(meta) == {
         "model": "Faikout S3-MINI-N4-R2",
         "sw_version": "3087afa9",
-        "mac": "A1B2C3D4E5F6",
+        # Normalised on the way out, because this reaches the device registry.
+        "mac": "a1:b2:c3:d4:e5:f6",
     }
 
 
@@ -233,3 +234,50 @@ def test_same_host_different_mac_gives_different_identity():
     a = const.device_id_for("111111111111", "GuestAC")
     b = const.device_id_for("222222222222", "GuestAC")
     assert a != b
+
+
+# --- bounds on untrusted payloads -------------------------------------------
+def test_merge_state_rejects_oversized_payload():
+    huge = '{"a": "' + "x" * (const.MAX_PAYLOAD_CHARS + 10) + '"}'
+    assert const.merge_state({"home": 20}, huge) is None
+
+
+def test_merge_state_caps_new_field_count():
+    """A device streaming fresh key names must not grow state without limit."""
+    import json as _json
+
+    state = {}
+    for chunk in range(6):
+        payload = _json.dumps(
+            {f"k{chunk}_{i}": 1 for i in range(100)}
+        )
+        state = const.merge_state(state, payload)
+    assert len(state) == const.MAX_STATE_FIELDS
+
+
+def test_merge_state_still_updates_known_fields_at_the_cap():
+    """The cap must not freeze real values once it is reached."""
+    import json as _json
+
+    state = {f"filler{i}": 0 for i in range(const.MAX_STATE_FIELDS)}
+    state["home"] = 20
+    merged = const.merge_state(state, _json.dumps({"home": 25, "brandnew": 1}))
+    assert merged["home"] == 25          # known field updates
+    assert "brandnew" not in merged      # new one refused at the cap
+
+
+def test_device_metadata_normalises_mac():
+    meta = const.device_metadata({"id": "AABBCCDDEEFF"})
+    assert meta["mac"] == "aa:bb:cc:dd:ee:ff"
+
+
+def test_device_metadata_drops_garbage_mac():
+    """Only a real MAC may reach the device registry."""
+    assert const.device_metadata({"id": "x" * 500})["mac"] is None
+    assert const.device_metadata({"id": "not-a-mac"})["mac"] is None
+
+
+def test_device_metadata_truncates_text_fields():
+    meta = const.device_metadata({"app": "A" * 500, "version": "V" * 500})
+    assert len(meta["model"]) <= const.MAX_META_TEXT
+    assert len(meta["sw_version"]) <= const.MAX_META_TEXT

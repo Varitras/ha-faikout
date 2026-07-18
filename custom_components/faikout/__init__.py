@@ -15,8 +15,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: FaikoutConfigEntry) -> b
     coordinator.set_update_interval(
         entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     )
-    await coordinator.async_start()
     try:
+        # Inside the try: async_start() connects and then subscribes twice, so a
+        # failure part way through already leaves a live socket behind.
+        await coordinator.async_start()
         await coordinator.async_wait_first_data()
         entry.runtime_data = coordinator
         entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
