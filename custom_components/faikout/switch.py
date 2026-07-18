@@ -9,9 +9,10 @@ from .const import SWITCH_FIELDS, build_switch_command
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
-# Controls that many AC models report but do not actually act on. The LED
-# control is ignored by S21 units (verified live: neither control JSON nor the
-# firmware's own command/<host>/led changes it), so it is disabled by default.
+# The LED control only takes effect alongside another real state change on S21
+# units (verified live: a LED-only command does not trigger an S21 frame, so the
+# new LED value "rides along" the next actual change to temp/mode/etc.). That
+# makes it unreliable as a standalone switch, so it is disabled by default.
 _DISABLED_BY_DEFAULT = {"led"}
 
 
