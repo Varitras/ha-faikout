@@ -96,7 +96,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-    _energy("Whoutside", "energy_outside"),
+    _energy("Whoutside", "energy_total"),
     _energy("Whheating", "energy_heating"),
     _energy("Whcooling", "energy_cooling"),
     SensorEntityDescription(

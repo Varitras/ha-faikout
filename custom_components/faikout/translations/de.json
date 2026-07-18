@@ -27,7 +27,7 @@
       "compressor": { "name": "Kompressor" },
       "demand": { "name": "Anforderung" },
       "wifi_signal": { "name": "WLAN-Signal" },
-      "energy_outside": { "name": "Energie außen" },
+      "energy_total": { "name": "Energie gesamt" },
       "last_report": { "name": "Letzte Meldung" },
       "uptime": { "name": "Betriebszeit" },
       "mqtt_up": { "name": "MQTT-Verbindungsdauer" },
