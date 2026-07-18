@@ -5,7 +5,8 @@ Custom integration for Faikin/Faikout AC modules (RevK firmware) over MQTT.
 **Data flow:** Faikout module → MQTT broker → Home Assistant MQTT integration → this integration.
 
 ## Requirements
-- Home Assistant 2024.12 or newer
+- Home Assistant 2025.3 or newer. That is the first release shipping paho-mqtt 2.x, which the
+  own-broker mode requires; it is verified by a CI job pinned to exactly that version.
 - Either the **MQTT integration** configured against the broker the Faikout publishes to, **or** the broker
   details (host/port/credentials) so the integration can connect on its own.
 

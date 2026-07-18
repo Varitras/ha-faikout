@@ -11,12 +11,26 @@ permissions:
 
 jobs:
   pytest:
-    name: pytest (Python ${{ matrix.python-version }})
+    name: pytest (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
+      # Both rows should always report; one failing must not hide the other.
+      fail-fast: false
       matrix:
-        # Current Home Assistant requires Python 3.14.
-        python-version: ["3.14"]
+        include:
+          # Catches deprecations and API breakage early.
+          - label: current HA
+            python-version: "3.14"
+            phcc: ""
+          # Guards the minimum version claimed in hacs.json and the README.
+          # Each pytest-homeassistant-custom-component release pins exactly one
+          # Home Assistant version, so the minimum is selected by pinning phcc:
+          # 0.13.221 pins homeassistant 2025.3.0, the first release shipping
+          # paho-mqtt 2.x, which the own MQTT client requires. That HA needs
+          # Python 3.13, hence the paired Python version.
+          - label: minimum HA 2025.3
+            python-version: "3.13"
+            phcc: "==0.13.221"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -28,7 +42,9 @@ jobs:
           # pytest-homeassistant-custom-component pulls in a matching
           # homeassistant and provides the `hass` fixture the integration tests
           # need; paho-mqtt is needed for the own-MQTT transport test.
-          pip install pytest-homeassistant-custom-component paho-mqtt
+          pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}" paho-mqtt
+      - name: Show versions under test
+        run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
       - name: Run tests
         run: python -m pytest -q
 
