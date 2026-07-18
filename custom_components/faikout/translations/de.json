@@ -3,11 +3,37 @@
     "step": {
       "user": {
         "title": "Faikout",
+        "description": "Wie soll Home Assistant das Faikout-Modul erreichen?",
+        "menu_options": {
+          "ha_mqtt": "Die MQTT-Integration von Home Assistant nutzen",
+          "own_mqtt": "Mit einem eigenen MQTT-Broker verbinden"
+        }
+      },
+      "ha_mqtt": {
+        "title": "Modul auswählen",
         "description": "Gefundenes Faikout-Modul auswählen oder Hostnamen eingeben — der mittlere Teil der MQTT-Topics (das GuestAC in state/GuestAC).",
+        "data": { "host": "Hostname" }
+      },
+      "own_mqtt": {
+        "title": "MQTT-Broker",
+        "description": "Verbindungsdaten des Brokers, auf den der Faikout sendet. Die Integration verbindet sich direkt damit.",
+        "data": {
+          "mqtt_host": "Broker-Host",
+          "mqtt_port": "Port",
+          "mqtt_username": "Benutzername",
+          "mqtt_password": "Passwort"
+        }
+      },
+      "own_host": {
+        "title": "Modul auswählen",
+        "description": "Auf diesem Broker gefundenes Faikout-Modul auswählen oder Hostnamen eingeben.",
         "data": { "host": "Hostname" }
       }
     },
-    "error": { "invalid_host": "Bitte einen gültigen Hostnamen eingeben." },
+    "error": {
+      "invalid_host": "Bitte einen gültigen Hostnamen eingeben.",
+      "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen."
+    },
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
       "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."

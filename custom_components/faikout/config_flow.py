@@ -23,10 +23,20 @@ from .const import (
     DISCOVERY_TOPIC,
     DOMAIN,
 )
+from .transport import async_discover_on_broker
 
 _LOGGER = logging.getLogger(__name__)
 
 DISCOVERY_SECONDS = 3.0
+
+
+def _host_selector(discovered: set[str]):
+    """Dropdown of discovered hosts (free text still allowed), else a text box."""
+    if discovered:
+        return selector.SelectSelector(
+            selector.SelectSelectorConfig(options=sorted(discovered), custom_value=True)
+        )
+    return selector.TextSelector()
 
 
 class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -39,7 +49,20 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry) -> "FaikoutOptionsFlow":
         return FaikoutOptionsFlow()
 
+    def __init__(self) -> None:
+        self._broker: dict = {}
+        self._discovered: set[str] = set()
+
     async def async_step_user(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Let the user pick how the integration should reach the module."""
+        return self.async_show_menu(
+            step_id="user", menu_options=["ha_mqtt", "own_mqtt"]
+        )
+
+    # -- via Home Assistant's MQTT integration -------------------------------
+    async def async_step_ha_mqtt(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
         if not await mqtt.async_wait_for_mqtt_client(self.hass):
@@ -55,19 +78,92 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=host, data={CONF_HOST: host})
 
-        discovered = await self._discover_hosts()
-        if discovered:
-            host_selector = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=sorted(discovered), custom_value=True
+        return self.async_show_form(
+            step_id="ha_mqtt",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_HOST): _host_selector(await self._discover_hosts())}
+            ),
+            errors=errors,
+        )
+
+    # -- via an own broker ---------------------------------------------------
+    async def async_step_own_mqtt(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Collect broker details and discover modules on that broker."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            broker = {
+                CONF_MQTT_HOST: user_input[CONF_MQTT_HOST].strip(),
+                CONF_MQTT_PORT: int(user_input.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
+                CONF_MQTT_USERNAME: user_input.get(CONF_MQTT_USERNAME, ""),
+                CONF_MQTT_PASSWORD: user_input.get(CONF_MQTT_PASSWORD, ""),
+            }
+            try:
+                self._discovered = await async_discover_on_broker(
+                    self.hass,
+                    broker[CONF_MQTT_HOST],
+                    broker[CONF_MQTT_PORT],
+                    broker[CONF_MQTT_USERNAME] or None,
+                    broker[CONF_MQTT_PASSWORD] or None,
+                    DISCOVERY_SECONDS,
                 )
-            )
-        else:
-            host_selector = selector.TextSelector()
+            except Exception:  # noqa: BLE001 - any connect/auth problem
+                _LOGGER.debug("Broker discovery failed", exc_info=True)
+                errors["base"] = "cannot_connect"
+            else:
+                self._broker = broker
+                return await self.async_step_own_host()
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_HOST): host_selector}),
+            step_id="own_mqtt",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MQTT_HOST): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_MQTT_PORT, default=DEFAULT_MQTT_PORT
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=65535,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Optional(CONF_MQTT_USERNAME, default=""): selector.TextSelector(),
+                    vol.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD
+                        )
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_own_host(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        """Pick the module found on the own broker."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            host = user_input[CONF_HOST].strip()
+            if not host:
+                errors["base"] = "invalid_host"
+            else:
+                await self.async_set_unique_id(host)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=host,
+                    data={CONF_HOST: host},
+                    options={CONF_USE_OWN_MQTT: True, **self._broker},
+                )
+
+        return self.async_show_form(
+            step_id="own_host",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_HOST): _host_selector(self._discovered)}
+            ),
             errors=errors,
         )
 

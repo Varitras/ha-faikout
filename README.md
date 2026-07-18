@@ -6,13 +6,21 @@ Custom integration for Faikin/Faikout AC modules (RevK firmware) over MQTT.
 
 ## Requirements
 - Home Assistant 2024.12 or newer
-- The **MQTT integration** configured against the same broker the Faikout publishes to
+- Either the **MQTT integration** configured against the broker the Faikout publishes to, **or** the broker
+  details (host/port/credentials) so the integration can connect on its own.
 
 ## Installation (HACS)
 1. HACS → Custom repositories → add this repo as an *Integration*.
 2. Install "Faikout", restart Home Assistant.
 3. Settings → Devices & Services → Add Integration → **Faikout**.
-4. Pick the discovered module (or type its hostname) and submit.
+4. Choose how to connect:
+   - **Home Assistant's MQTT integration** — uses the broker HA is already connected to, or
+   - **An own MQTT broker** — enter host/port/credentials; the integration connects directly. Useful when the
+     Faikout lives on a different broker than HA's MQTT client.
+5. Pick the discovered module (or type its hostname) and submit.
+
+Both the connection and an optional update-interval throttle can be changed later under the integration's
+*Configure* options.
 
 ## Entities
 - **Climate** — power, mode (heat/cool/auto/dry/fan_only), target temperature, fan (auto, 1–5), swing (vertical/horizontal).

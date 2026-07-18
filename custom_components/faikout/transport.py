@@ -29,6 +29,7 @@ from .const import (
     CONF_MQTT_USERNAME,
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
+    DISCOVERY_TOPIC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -147,6 +148,53 @@ class OwnMqttTransport(FaikoutTransport):
     async def async_stop(self) -> None:
         self._client.loop_stop()
         await self.hass.async_add_executor_job(self._client.disconnect)
+
+
+async def async_discover_on_broker(
+    hass: HomeAssistant,
+    host: str,
+    port: int,
+    username: str | None,
+    password: str | None,
+    seconds: float = 3.0,
+) -> set[str]:
+    """Briefly connect to a broker and collect Faikout hostnames from state/+.
+
+    Used by the config flow when the user sets up an own broker, so devices on
+    that broker can be discovered without Home Assistant's MQTT integration.
+    Raises OSError when the broker cannot be reached.
+    """
+    import time
+
+    import paho.mqtt.client as paho
+
+    hosts: set[str] = set()
+
+    def _collect() -> None:
+        client = paho.Client(paho.CallbackAPIVersion.VERSION2)
+        if username:
+            client.username_pw_set(username, password or None)
+
+        def _on_connect(c, userdata, flags, reason_code, properties=None):
+            c.subscribe(DISCOVERY_TOPIC, 0)
+
+        def _on_message(c, userdata, msg):
+            parts = msg.topic.split("/")
+            if len(parts) == 2 and parts[0] == "state" and parts[1]:
+                hosts.add(parts[1])
+
+        client.on_connect = _on_connect
+        client.on_message = _on_message
+        client.connect(host, port, 60)
+        client.loop_start()
+        try:
+            time.sleep(seconds)
+        finally:
+            client.loop_stop()
+            client.disconnect()
+
+    await hass.async_add_executor_job(_collect)
+    return hosts
 
 
 def create_transport(hass: HomeAssistant, entry) -> FaikoutTransport:
