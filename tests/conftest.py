@@ -87,12 +87,16 @@ class FakeTransport:
         self.connected = False
         self.stopped = False
         self.listener = None
+        self.auth_failed_listener = None
         # Delivered as soon as the coordinator subscribes, so setup does not
         # sit in async_wait_first_data waiting for a device that isn't there.
         self._initial = initial or {}
 
     def set_connection_listener(self, listener):
         self.listener = listener
+
+    def set_auth_failure_listener(self, listener):
+        self.auth_failed_listener = listener
 
     async def async_connect(self):
         self.connected = True

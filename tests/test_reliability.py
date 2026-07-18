@@ -596,3 +596,66 @@ async def test_transport_selection_passes_tls_options(hass):
     assert transport._tls is True
     assert transport._tls_insecure is True
     assert transport._port == 8883, "the plaintext default was not moved to TLS"
+
+
+async def test_tls_setup_failure_stays_retryable(hass):
+    """A missing CA bundle must not drop the entry into SETUP_ERROR."""
+    transport = _tls_transport(hass)
+    transport._client.tls_set.side_effect = OSError("no CA bundle")
+
+    with pytest.raises(ConfigEntryNotReady, match="TLS"):
+        await transport.async_connect()
+
+
+async def test_credentials_revoked_while_running_asks_for_reauth(hass):
+    """paho reconnects on its own, so nothing else would notice."""
+    transport = _transport(hass)
+    _answer_connack(transport, FakeReasonCode(0, failure=False))
+    await transport.async_connect()
+
+    asked = []
+    transport.set_auth_failure_listener(lambda: asked.append(True))
+
+    # paho's own reconnect gets rejected with "not authorised"
+    transport._handle_connect(FakeReasonCode(5))
+
+    assert asked == [True]
+
+
+async def test_initial_auth_failure_does_not_ask_for_reauth_twice(hass):
+    """Setup already raises ConfigEntryAuthFailed; HA starts reauth from that."""
+    transport = _transport(hass)
+    asked = []
+    transport.set_auth_failure_listener(lambda: asked.append(True))
+    _answer_connack(transport, FakeReasonCode(5))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await transport.async_connect()
+
+    assert asked == []
+
+
+async def test_out_of_band_flush_cancels_a_pending_timer(hass):
+    """An availability flush makes an armed throttle timer redundant."""
+    import datetime
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL, state_topic
+
+    transport = make_transport()
+    entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
+    coordinator = entry.runtime_data
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 26}))
+    await hass.async_block_till_done()
+    assert coordinator._flush_unsub is not None, "precondition: a timer is armed"
+
+    transport.feed(state_topic(TEST_HOST), "false")
+    await hass.async_block_till_done()
+    assert coordinator._flush_unsub is None, "the stale timer was left armed"
+
+    # And it really does not fire later.
+    async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=31))
+    await hass.async_block_till_done()

@@ -242,9 +242,14 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             else:
                 # Only the credentials change; host stays what the entry uses.
-                return self.async_update_reload_and_abort(
+                # Deliberately not async_update_reload_and_abort: that schedules
+                # a reload *and* the options update fires our own update
+                # listener, which reloads too - two reconnects per reauth. The
+                # listener alone is enough.
+                self.hass.config_entries.async_update_entry(
                     entry, options={**entry.options, **broker}
                 )
+                return self.async_abort(reason="reauth_successful")
 
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -306,10 +311,20 @@ class FaikoutOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            if user_input.get(CONF_USE_OWN_MQTT) and not user_input.get(CONF_MQTT_HOST):
+            if user_input.get(CONF_USE_OWN_MQTT) and not str(
+                user_input.get(CONF_MQTT_HOST, "")
+            ).strip():
                 errors[CONF_MQTT_HOST] = "host_required"
             else:
-                return self.async_create_entry(data=user_input)
+                # Normalise like the setup and reauth paths do; a pasted host
+                # with stray whitespace would otherwise only surface later as an
+                # opaque connect failure.
+                cleaned = dict(user_input)
+                if cleaned.get(CONF_MQTT_HOST):
+                    cleaned[CONF_MQTT_HOST] = cleaned[CONF_MQTT_HOST].strip()
+                if CONF_MQTT_PORT in cleaned:
+                    cleaned[CONF_MQTT_PORT] = int(cleaned[CONF_MQTT_PORT])
+                return self.async_create_entry(data=cleaned)
 
         o = self.config_entry.options
         schema = vol.Schema(

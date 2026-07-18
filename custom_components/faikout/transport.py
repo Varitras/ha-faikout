@@ -116,6 +116,13 @@ class FaikoutTransport:
         Home Assistant; the HA transport never calls this.
         """
 
+    def set_auth_failure_listener(self, listener: Callable[[], None]) -> None:
+        """Register a callback for credentials the broker rejects later.
+
+        Only the own client can hit this: it reconnects by itself, so a
+        rejection after setup would otherwise go unnoticed.
+        """
+
     async def async_connect(self) -> None:
         """Establish the connection (no-op for the HA transport)."""
 
@@ -189,6 +196,11 @@ class OwnMqttTransport(FaikoutTransport):
         self._subs: dict[str, Callable[[FaikoutMessage], None]] = {}
         self._connected = False
         self._listener: Callable[[bool], None] | None = None
+        self._auth_failed: Callable[[], None] | None = None
+        # Set once the initial connect succeeded. A rejection before that is
+        # reported by async_connect raising ConfigEntryAuthFailed, which Home
+        # Assistant already turns into a reauth flow.
+        self._connected_once = False
         self._connack: asyncio.Future | None = None
         self._client = paho.Client(paho.CallbackAPIVersion.VERSION2)
         if username:
@@ -199,6 +211,9 @@ class OwnMqttTransport(FaikoutTransport):
 
     def set_connection_listener(self, listener) -> None:
         self._listener = listener
+
+    def set_auth_failure_listener(self, listener) -> None:
+        self._auth_failed = listener
 
     def _setup_tls(self) -> None:
         """Arm TLS on the client. Runs in an executor: this touches the disk."""
@@ -228,8 +243,15 @@ class OwnMqttTransport(FaikoutTransport):
         """
         if self._tls:
             # tls_set() reads the CA bundle from disk, so it must not run on the
-            # event loop.
-            await self.hass.async_add_executor_job(self._setup_tls)
+            # event loop. It can also fail outright - a slim container without a
+            # CA bundle raises here - and that has to stay retryable like every
+            # other connect failure, not drop the entry into SETUP_ERROR.
+            try:
+                await self.hass.async_add_executor_job(self._setup_tls)
+            except Exception as err:
+                raise ConfigEntryNotReady(
+                    f"Cannot set up TLS for {self._host}:{self._port}: {err}"
+                ) from err
         self._connack = self.hass.loop.create_future()
         try:
             await self.hass.async_add_executor_job(
@@ -261,6 +283,8 @@ class OwnMqttTransport(FaikoutTransport):
                 raise ConfigEntryAuthFailed(message)
             raise ConfigEntryNotReady(message)
 
+        self._connected_once = True
+
     # -- paho thread callbacks (NOT on the HA event loop) --------------------
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         self.hass.loop.call_soon_threadsafe(self._handle_connect, reason_code)
@@ -279,6 +303,15 @@ class OwnMqttTransport(FaikoutTransport):
             # the coordinator already knows, but relying on that ordering makes
             # the state depend on someone else's implementation detail.
             self._notify()
+            if (
+                self._connected_once
+                and getattr(reason_code, "value", reason_code) in AUTH_FAILURE_CODES
+                and self._auth_failed is not None
+            ):
+                # Setup already succeeded once, so this is paho's own reconnect
+                # being rejected - credentials changed underneath a running
+                # entry. Nothing else would ever ask the user to re-authenticate.
+                self._auth_failed()
             return
         # Re-subscribe: paho drops subscriptions on reconnect.
         for topic in self._subs:

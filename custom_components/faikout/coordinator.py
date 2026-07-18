@@ -62,6 +62,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # at all, so entities must go unavailable on that too.
         self.transport_online = True
         transport.set_connection_listener(self._transport_connection_changed)
+        transport.set_auth_failure_listener(self._auth_failed)
         # Update throttle: 0 = real-time; N>0 = push to HA at most every N seconds
         # (latest value always flushed via a trailing timer).
         self._min_interval = 0.0
@@ -109,6 +110,13 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # Availability changed for every entity — push immediately rather than
         # letting the update throttle delay the bad news.
         self.async_update_listeners()
+
+    @callback
+    def _auth_failed(self) -> None:
+        """The broker rejected our credentials while the entry was running."""
+        _LOGGER.warning("Broker rejected the credentials for %s", self.host)
+        if self.config_entry is not None:
+            self.config_entry.async_start_reauth(self.hass)
 
     @callback
     def _meta_received(self, msg) -> None:
@@ -203,6 +211,11 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _flush(self) -> None:
+        # A flush that jumps the queue (availability change) makes any armed
+        # timer redundant; leaving it would fire one extra update later.
+        if self._flush_unsub is not None:
+            self._flush_unsub()
+            self._flush_unsub = None
         self._last_push = self.hass.loop.time()
         if self._pending is not None:
             self.async_set_updated_data(self._pending)
