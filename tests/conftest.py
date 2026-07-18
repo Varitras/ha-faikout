@@ -57,6 +57,7 @@ STATUS_PAYLOAD = {
     "econo": False,
     "comp": 42,
     "fanrpm": 780,
+    "demand": 100,
     "protocol": "S21",
 }
 

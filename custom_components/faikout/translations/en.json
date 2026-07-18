@@ -111,9 +111,6 @@
       "compressor": {
         "name": "Compressor"
       },
-      "demand": {
-        "name": "Demand"
-      },
       "wifi_signal": {
         "name": "WiFi signal"
       },
@@ -187,6 +184,11 @@
       },
       "swingh": {
         "name": "Horizontal swing"
+      }
+    },
+    "number": {
+      "demand": {
+        "name": "Demand"
       }
     }
   }

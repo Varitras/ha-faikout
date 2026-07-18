@@ -17,7 +17,7 @@ DOMAIN = "faikout"
 MAX_PAYLOAD_CHARS = 16384
 MAX_STATE_FIELDS = 256
 MAX_META_TEXT = 64
-PLATFORMS = ["climate", "sensor", "switch"]
+PLATFORMS = ["climate", "number", "sensor", "switch"]
 CONF_HOST = "host"
 # Stable per-module identity (MAC when known, hostname otherwise). Everything
 # HA keys on — config entry, device, entity unique ids — uses this, never the
@@ -195,6 +195,19 @@ def swing_ha_to_dev(mode: str) -> dict:
         "swingv": mode in (SWING_VERTICAL, SWING_BOTH),
         "swingh": mode in (SWING_HORIZONTAL, SWING_BOTH),
     }
+
+
+# --- Demand -----------------------------------------------------------------
+# Output limit in percent. The device refuses anything below 30 (verified live
+# against the firmware's own control, which offers 30..100), so a plain 0-100
+# range would silently accept values that never take effect.
+DEMAND_MIN = 30
+DEMAND_MAX = 100
+DEMAND_STEP = 5
+
+
+def build_demand_command(value) -> dict:
+    return {"demand": int(value)}
 
 
 # --- Temperature / entity sets ----------------------------------------------

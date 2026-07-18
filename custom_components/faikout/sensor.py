@@ -102,12 +102,6 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
     _energy("Whoutside", "energy_total"),
     _energy("Whheating", "energy_heating"),
     _energy("Whcooling", "energy_cooling"),
-    SensorEntityDescription(
-        key="demand",
-        translation_key="demand",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
     # /status carries unit-STABLE speeds regardless of the hafanrpm/hacomprpm
     # device setting (verified live): fanrpm is always RPM, comp always Hz.
     SensorEntityDescription(

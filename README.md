@@ -43,13 +43,13 @@ Measured against a Faikin S21 unit; your model may report fewer fields.
 | Energy | 3 counters | 3 counters, converted to kWh |
 | Switches | 9 | 9 |
 | Faikout-Auto toggle | **yes** | no |
-| Restart button, demand select | **yes** | no |
+| Restart button | **yes** | no |
 | Diagnostics (uptime, memory, WiFi, IP, build, …) | no | **14 entities** |
 | Broker separate from Home Assistant's | no | **yes** |
 | Update-rate throttle | no | **yes** |
 
-So the built-in route is *not* a subset — it exposes a Faikout-Auto switch, a restart button and a demand
-select that this integration does not have. Pick whichever matches what you need.
+So the built-in route is *not* a subset — it exposes a Faikout-Auto switch and a restart button that this
+integration does not have. Pick whichever matches what you need.
 
 ### Reasons to use this integration instead
 
@@ -130,7 +130,8 @@ Reachable later via *Configure* on the integration entry:
 | Platform | What |
 |---|---|
 | **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan (auto, 1–5), swing |
-| **Sensors** | room / outside / inlet / coil temperature, humidity, power, energy (total, heating, cooling), compressor frequency, fan speed, demand |
+| **Number** | demand — the output limit in percent, 30 to 100 in steps of 5 |
+| **Sensors** | room / outside / inlet / coil temperature, humidity, power, energy (total, heating, cooling), compressor frequency, fan speed |
 | **Diagnostics** | uptime, MQTT uptime, free memory, free SPI RAM, flash size, WiFi SSID/BSSID/channel/signal, IP address, reset reason, firmware build, protocol, last report |
 | **Switches** | powerful, economy, streamer, quiet (outdoor), comfort, sensor mode, LED, vertical/horizontal swing |
 

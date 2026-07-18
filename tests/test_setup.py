@@ -224,3 +224,40 @@ async def test_non_numeric_value_does_not_break_a_scaled_sensor(hass):
     await hass.async_block_till_done()
 
     assert hass.states.get(entity_id).state in ("unknown", "unavailable")
+
+
+# --- demand (settable) -------------------------------------------------------
+async def test_demand_number_reflects_state_and_sends_command(hass):
+    """Demand is a control, not a reading: the device accepts writes."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    entity_id = f"number.{TEST_HOST}_demand"
+    state = hass.states.get(entity_id)
+    assert state.state == "100"
+    assert state.attributes["min"] == 30
+    assert state.attributes["max"] == 100
+    assert state.attributes["step"] == 5
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": entity_id, "value": 85}, blocking=True
+    )
+    topic, payload = transport.published[-1]
+    assert topic == f"command/{TEST_HOST}/control"
+    assert payload == {"demand": 85}
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"demand": 85}))
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "85"
+
+
+async def test_demand_is_not_also_a_sensor(hass):
+    """One entity per value; the read-only sensor was replaced."""
+    await setup_integration(hass, make_transport())
+    assert hass.states.get(f"sensor.{TEST_HOST}_demand") is None
+
+
+async def test_no_demand_entity_when_the_model_does_not_report_it(hass):
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if k != "demand"}
+    await setup_integration(hass, make_transport(status=status))
+    assert hass.states.get(f"number.{TEST_HOST}_demand") is None

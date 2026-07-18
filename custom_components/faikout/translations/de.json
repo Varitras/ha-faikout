@@ -111,9 +111,6 @@
       "compressor": {
         "name": "Kompressor"
       },
-      "demand": {
-        "name": "Anforderung"
-      },
       "wifi_signal": {
         "name": "WLAN-Signal"
       },
@@ -187,6 +184,11 @@
       },
       "swingh": {
         "name": "Lamellen horizontal"
+      }
+    },
+    "number": {
+      "demand": {
+        "name": "Anforderung"
       }
     }
   }
