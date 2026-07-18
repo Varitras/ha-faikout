@@ -13,6 +13,12 @@ PLATFORMS = ["climate", "sensor", "switch"]
 CONF_HOST = "host"
 DISCOVERY_TOPIC = "state/+"
 
+# Option: throttle how often incoming MQTT updates are pushed into HA entities.
+# 0 = real-time (every message). N>0 = at most one update per N seconds
+# (the latest value is always flushed). Purely HA-side; does not touch the device.
+CONF_UPDATE_INTERVAL = "update_interval"
+DEFAULT_UPDATE_INTERVAL = 0
+
 
 def state_topic(host: str) -> str:
     return f"state/{host}"

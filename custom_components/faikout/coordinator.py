@@ -8,6 +8,7 @@ import logging
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import CONF_HOST, control_topic, merge_state, state_topic, status_topic
@@ -32,6 +33,16 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # Module presence: the bare state/<host> topic doubles as the LWT
         # ("false" when the module drops off MQTT). Optimistic until told otherwise.
         self.module_online = True
+        # Update throttle: 0 = real-time; N>0 = push to HA at most every N seconds
+        # (latest value always flushed via a trailing timer).
+        self._min_interval = 0.0
+        self._pending: dict | None = None
+        self._last_push = 0.0
+        self._flush_unsub = None
+
+    @callback
+    def set_update_interval(self, seconds) -> None:
+        self._min_interval = max(0.0, float(seconds or 0))
 
     async def async_start(self) -> None:
         self._unsub = await mqtt.async_subscribe(
@@ -58,22 +69,52 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 return
             self.device_meta = parsed
             self.module_online = parsed.get("online", True) is not False
-        self.async_update_listeners()
+        self._maybe_push()
 
     @callback
     def _message_received(self, msg: mqtt.ReceiveMessage) -> None:
         payload = msg.payload
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode(errors="replace")
-        new_state = merge_state(self.data, payload)
+        base = self._pending if self._pending is not None else self.data
+        new_state = merge_state(base, payload)
         if new_state is None:
             _LOGGER.warning("Ignoring unparseable state on %s: %r", msg.topic, payload)
             return
-        self.async_set_updated_data(new_state)
+        self._pending = new_state
         # Only a real JSON state (not a bare presence "true"/"false") satisfies
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
+        self._maybe_push()
+
+    @callback
+    def _maybe_push(self) -> None:
+        """Flush the latest state to HA, honouring the update-interval throttle."""
+        if self._min_interval <= 0:
+            self._flush()
+            return
+        now = self.hass.loop.time()
+        elapsed = now - self._last_push
+        if elapsed >= self._min_interval:
+            self._flush()
+        elif self._flush_unsub is None:
+            self._flush_unsub = async_call_later(
+                self.hass, self._min_interval - elapsed, self._scheduled_flush
+            )
+
+    @callback
+    def _scheduled_flush(self, _now) -> None:
+        self._flush_unsub = None
+        self._flush()
+
+    @callback
+    def _flush(self) -> None:
+        self._last_push = self.hass.loop.time()
+        if self._pending is not None:
+            self.async_set_updated_data(self._pending)
+        else:
+            self.async_update_listeners()
 
     async def async_wait_first_data(self, timeout: float = 10) -> None:
         try:
@@ -101,4 +142,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if self._unsub_meta is not None:
             self._unsub_meta()
             self._unsub_meta = None
+        if self._flush_unsub is not None:
+            self._flush_unsub()
+            self._flush_unsub = None
         await super().async_shutdown()

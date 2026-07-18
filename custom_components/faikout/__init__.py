@@ -3,18 +3,27 @@ from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
 
-from .const import PLATFORMS
+from .const import CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, PLATFORMS
 from .coordinator import FaikoutConfigEntry, FaikoutCoordinator
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: FaikoutConfigEntry) -> bool:
     """Set up Faikout from a config entry."""
     coordinator = FaikoutCoordinator(hass, entry)
+    coordinator.set_update_interval(
+        entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+    )
     await coordinator.async_start()
     await coordinator.async_wait_first_data()
     entry.runtime_data = coordinator
+    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_reload_on_options(hass: HomeAssistant, entry: FaikoutConfigEntry) -> None:
+    """Reload the entry when options (e.g. update interval) change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FaikoutConfigEntry) -> bool:

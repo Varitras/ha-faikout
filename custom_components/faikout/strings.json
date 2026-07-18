@@ -13,6 +13,16 @@
       "already_configured": "This Faikout module is already configured."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Faikout options",
+        "data": {
+          "update_interval": "Update interval (seconds, 0 = real-time)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "home": { "name": "Room temperature" },

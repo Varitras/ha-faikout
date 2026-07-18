@@ -13,6 +13,16 @@
       "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Faikout-Optionen",
+        "data": {
+          "update_interval": "Update-Intervall (Sekunden, 0 = Echtzeit)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "home": { "name": "Raumtemperatur" },

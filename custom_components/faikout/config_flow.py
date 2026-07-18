@@ -6,11 +6,17 @@ import logging
 
 import voluptuous as vol
 from homeassistant.components import mqtt
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import CONF_HOST, DISCOVERY_TOPIC, DOMAIN
+from .const import (
+    CONF_HOST,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    DISCOVERY_TOPIC,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +27,11 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Faikout config flow."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry) -> "FaikoutOptionsFlow":
+        return FaikoutOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict | None = None
@@ -70,3 +81,33 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         finally:
             unsub()
         return hosts
+
+
+class FaikoutOptionsFlow(OptionsFlow):
+    """Options: throttle how often MQTT updates are pushed into HA."""
+
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current = self.config_entry.options.get(
+            CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_UPDATE_INTERVAL, default=current
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=3600,
+                        step=1,
+                        unit_of_measurement="s",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                )
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
