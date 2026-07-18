@@ -58,9 +58,13 @@ def effective_port(port, tls: bool) -> int:
     """Port to actually use, moving to 8883 when TLS is switched on.
 
     The port field keeps its plaintext default of 1883 when a user ticks TLS,
-    which would then just fail to connect. Only the untouched default is
-    adjusted — an explicitly chosen port is always honoured, since running MQTTS
-    on a non-standard port is a legitimate setup.
+    which would then just fail to connect.
+
+    Note the limit of this: 1883 typed deliberately is indistinguishable from
+    1883 left untouched, so TLS on 1883 specifically cannot be configured. That
+    combination is vanishingly rare — 1883 is the registered plaintext port —
+    and the alternative, silently failing to connect for everyone who ticks TLS
+    without touching the port, is far worse. Every other port is honoured.
     """
     port = int(port)
     if tls and port == DEFAULT_MQTT_PORT:

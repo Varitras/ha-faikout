@@ -411,8 +411,10 @@ async def async_discover_on_broker(
                 raise MqttConnectionRefused(reason_code)
             time.sleep(seconds)
         finally:
-            client.loop_stop()
+            # disconnect() before loop_stop(), same as the persistent client:
+            # the network thread has to still be alive to send DISCONNECT.
             client.disconnect()
+            client.loop_stop()
 
     await hass.async_add_executor_job(_collect)
     return hosts

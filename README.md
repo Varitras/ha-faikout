@@ -96,7 +96,9 @@ type the hostname by hand — it is the middle part of the topics, the `GuestAC`
 
 The own-broker mode can encrypt the connection. Two switches, because they are not the same decision:
 
-- **Use TLS** — encrypts the connection. The port moves to 8883 unless you set one yourself.
+- **Use TLS** — encrypts the connection. The port moves to 8883 unless you set a different one. The one
+  exception is 8883's counterpart: a deliberately entered `1883` cannot be told apart from the untouched
+  default, so TLS on port 1883 specifically is not configurable.
 - **Do not verify the certificate** — accepts any certificate the broker presents.
 
 Brokers commonly ship with a self-signed demo certificate (EMQX's, for instance, is issued to

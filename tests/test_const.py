@@ -302,3 +302,8 @@ def test_effective_port_honours_an_explicit_choice():
     assert const.effective_port(9001, True) == 9001
     assert const.effective_port(8883, True) == 8883
     assert const.effective_port(9001, False) == 9001
+
+
+def test_effective_port_cannot_express_tls_on_1883():
+    """Documented limitation, pinned so it is a decision and not a surprise."""
+    assert const.effective_port(1883, True) == 8883
