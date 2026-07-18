@@ -129,6 +129,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
     ),
     # Diagnostics (bare topic; 'protocol' from /status).
     _diag("ts", "last_report", device_class=SensorDeviceClass.TIMESTAMP),
@@ -137,12 +138,14 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         "uptime",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_registry_enabled_default=False,
     ),
     _diag(
         "mqtt-up",
         "mqtt_up",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_registry_enabled_default=False,
     ),
     _diag(
         "mem",
