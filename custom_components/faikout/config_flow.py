@@ -26,6 +26,7 @@ from .const import (
     DOMAIN,
     device_id_for,
     is_valid_host,
+    normalize_mac,
 )
 from .transport import (
     MqttConnectionRefused,
@@ -36,6 +37,40 @@ from .transport import (
 _LOGGER = logging.getLogger(__name__)
 
 DISCOVERY_SECONDS = 3.0
+
+
+def _broker_from_input(user_input: dict) -> dict:
+    return {
+        CONF_MQTT_HOST: user_input[CONF_MQTT_HOST].strip(),
+        CONF_MQTT_PORT: int(user_input.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
+        CONF_MQTT_USERNAME: user_input.get(CONF_MQTT_USERNAME, ""),
+        CONF_MQTT_PASSWORD: user_input.get(CONF_MQTT_PASSWORD, ""),
+    }
+
+
+def _broker_schema(defaults=None) -> vol.Schema:
+    """Broker connection form, shared by initial setup and re-authentication."""
+    d = defaults or {}
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_MQTT_HOST, default=d.get(CONF_MQTT_HOST, vol.UNDEFINED)
+            ): selector.TextSelector(),
+            vol.Optional(
+                CONF_MQTT_PORT, default=d.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(
+                CONF_MQTT_USERNAME, default=d.get(CONF_MQTT_USERNAME, "")
+            ): selector.TextSelector(),
+            vol.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
+        }
+    )
 
 
 def _host_selector(discovered):
@@ -61,6 +96,24 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         self._broker: dict = {}
         # hostname -> MAC (None when the module did not announce one)
         self._discovered: dict = {}
+
+    def _duplicate_of_existing(self, host: str, mac) -> bool:
+        """Whether this module is already set up under a different identity.
+
+        A module discovered with its MAC and the same module added by hand (no
+        MAC, so identified by hostname) produce different unique ids, so the
+        unique-id check alone would happily add it twice. Two entries sharing a
+        hostname are only legitimate when BOTH carry a MAC and the MACs differ —
+        that is the genuine "same name on two brokers" case.
+        """
+        new_mac = normalize_mac(mac)
+        for entry in self._async_current_entries():
+            if entry.data.get(CONF_HOST) != host:
+                continue
+            existing_mac = normalize_mac(entry.data.get(CONF_MAC))
+            if existing_mac is None or new_mac is None:
+                return True
+        return False
 
     @staticmethod
     def _entry_data(host: str, mac) -> dict:
@@ -93,6 +146,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_host"
             else:
                 mac = self._discovered.get(host)
+                if self._duplicate_of_existing(host, mac):
+                    return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -115,12 +170,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect broker details and discover modules on that broker."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            broker = {
-                CONF_MQTT_HOST: user_input[CONF_MQTT_HOST].strip(),
-                CONF_MQTT_PORT: int(user_input.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
-                CONF_MQTT_USERNAME: user_input.get(CONF_MQTT_USERNAME, ""),
-                CONF_MQTT_PASSWORD: user_input.get(CONF_MQTT_PASSWORD, ""),
-            }
+            broker = _broker_from_input(user_input)
             try:
                 self._discovered = await async_discover_on_broker(
                     self.hass,
@@ -143,29 +193,48 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_own_host()
 
         return self.async_show_form(
-            step_id="own_mqtt",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_MQTT_HOST): selector.TextSelector(),
-                    vol.Optional(
-                        CONF_MQTT_PORT, default=DEFAULT_MQTT_PORT
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=65535,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Optional(CONF_MQTT_USERNAME, default=""): selector.TextSelector(),
-                    vol.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD
-                        )
-                    ),
-                }
-            ),
+            step_id="own_mqtt", data_schema=_broker_schema(), errors=errors
+        )
+
+    # -- re-authentication ---------------------------------------------------
+    async def async_step_reauth(self, entry_data) -> ConfigFlowResult:
+        """Broker rejected our credentials; ask the user for new ones."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            broker = _broker_from_input(user_input)
+            try:
+                await async_discover_on_broker(
+                    self.hass,
+                    broker[CONF_MQTT_HOST],
+                    broker[CONF_MQTT_PORT],
+                    broker[CONF_MQTT_USERNAME] or None,
+                    broker[CONF_MQTT_PASSWORD] or None,
+                    DISCOVERY_SECONDS,
+                )
+            except MqttConnectionRefused as err:
+                errors["base"] = (
+                    "invalid_auth" if err.is_auth_failure else "cannot_connect"
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Reauth broker check failed", exc_info=True)
+                errors["base"] = "cannot_connect"
+            else:
+                # Only the credentials change; host stays what the entry uses.
+                return self.async_update_reload_and_abort(
+                    entry, options={**entry.options, **broker}
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=_broker_schema(entry.options),
             errors=errors,
+            description_placeholders={"host": entry.data.get(CONF_HOST, "")},
         )
 
     async def async_step_own_host(
@@ -179,6 +248,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_host"
             else:
                 mac = self._discovered.get(host)
+                if self._duplicate_of_existing(host, mac):
+                    return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(

@@ -134,12 +134,30 @@ class HaMqttTransport(FaikoutTransport):
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
+        self._listener: Callable[[bool], None] | None = None
+        self._unsub_status: Callable[[], None] | None = None
+
+    def set_connection_listener(self, listener) -> None:
+        self._listener = listener
+
+    async def async_connect(self) -> None:
+        # The shared MQTT connection can drop independently of this integration.
+        # Without this the entities would keep serving stale values as "live".
+        if self._listener is not None:
+            self._unsub_status = mqtt.async_subscribe_connection_status(
+                self.hass, self._listener
+            )
 
     async def async_subscribe(self, topic, callback):
         return await mqtt.async_subscribe(self.hass, topic, callback)
 
     async def async_publish(self, topic, payload):
         await mqtt.async_publish(self.hass, topic, payload)
+
+    async def async_stop(self) -> None:
+        if self._unsub_status is not None:
+            self._unsub_status()
+            self._unsub_status = None
 
 
 class OwnMqttTransport(FaikoutTransport):
@@ -284,8 +302,11 @@ class OwnMqttTransport(FaikoutTransport):
         await self.hass.async_add_executor_job(self._stop_client)
 
     def _stop_client(self) -> None:
-        self._client.loop_stop()
+        # disconnect() first: it needs the network thread alive to actually put
+        # the DISCONNECT packet on the wire. Stopping the loop first would make
+        # every shutdown look like a dropped connection to the broker.
         self._client.disconnect()
+        self._client.loop_stop()
 
 
 async def async_discover_on_broker(

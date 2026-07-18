@@ -32,6 +32,16 @@
         "data": {
           "host": "Hostname"
         }
+      },
+      "reauth_confirm": {
+        "title": "Faikout neu anmelden",
+        "description": "Der Broker hat die gespeicherten Zugangsdaten für {host} abgelehnt. Bitte die aktuellen eingeben.",
+        "data": {
+          "mqtt_host": "Broker-Host",
+          "mqtt_port": "Port",
+          "mqtt_username": "Benutzername",
+          "mqtt_password": "Passwort"
+        }
       }
     },
     "error": {
@@ -41,7 +51,8 @@
     },
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
-      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."
+      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
+      "reauth_successful": "Neuanmeldung erfolgreich."
     }
   },
   "options": {

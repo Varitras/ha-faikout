@@ -174,7 +174,11 @@ async def test_same_hostname_on_two_brokers_can_coexist(hass, mock_setup_entry):
     """The whole point of the MAC identity: same name, different module."""
     MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: "11:11:11:11:11:11"},
+        data={
+            CONF_HOST: TEST_HOST,
+            CONF_MAC: "11:11:11:11:11:11",
+            CONF_DEVICE_ID: "11:11:11:11:11:11",
+        },
         unique_id="11:11:11:11:11:11",
     ).add_to_hass(hass)
 
@@ -201,7 +205,11 @@ async def test_same_module_rediscovered_still_aborts(hass):
     """Same MAC must still be refused, whatever hostname it reports now."""
     MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_HOST: "old-name", CONF_DEVICE_ID: "22:22:22:22:22:22"},
+        data={
+            CONF_HOST: "old-name",
+            CONF_MAC: "22:22:22:22:22:22",
+            CONF_DEVICE_ID: "22:22:22:22:22:22",
+        },
         unique_id="22:22:22:22:22:22",
     ).add_to_hass(hass)
 
@@ -273,3 +281,90 @@ async def test_options_flow_requires_host_for_own_mqtt(hass):
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_MQTT_HOST: "host_required"}
+
+
+# --- re-authentication --------------------------------------------------------
+async def test_reauth_updates_credentials_and_reloads(hass):
+    """A changed broker password must be fixable without removing the device."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        options={CONF_USE_OWN_MQTT: True, **BROKER},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_confirm"
+
+    with (
+        patch(
+            "custom_components.faikout.config_flow.async_discover_on_broker",
+            AsyncMock(return_value={TEST_HOST: None}),
+        ),
+        patch("custom_components.faikout.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**BROKER, CONF_MQTT_PASSWORD: "new-secret"}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.options[CONF_MQTT_PASSWORD] == "new-secret"
+    # The device itself must not be re-identified by a credential change.
+    assert entry.data[CONF_HOST] == TEST_HOST
+
+
+async def test_reauth_reports_wrong_credentials(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        options={CONF_USE_OWN_MQTT: True, **BROKER},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    result = await entry.start_reauth_flow(hass)
+
+    from custom_components.faikout.transport import MqttConnectionRefused
+
+    class _Code:
+        value = 5
+        is_failure = True
+
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(side_effect=MqttConnectionRefused(_Code())),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**BROKER, CONF_MQTT_PASSWORD: "still-wrong"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_hostname_entry_blocks_adding_the_same_module_by_mac(hass):
+    """Added by hand first, discovered later: still one device, not two."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_MAC: None, CONF_DEVICE_ID: TEST_HOST},
+        unique_id=TEST_HOST,
+    ).add_to_hass(hass)
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "33:33:33:33:33:33"}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], BROKER
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

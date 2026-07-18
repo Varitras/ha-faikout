@@ -20,6 +20,7 @@ from .const import (
     control_topic,
     device_metadata,
     merge_state,
+    parse_device_meta,
     state_topic,
     status_topic,
 )
@@ -113,11 +114,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if payload in ("true", "false", "online", "offline"):
             self.module_online = payload in ("true", "online")
         else:
-            try:
-                parsed = json.loads(payload)
-            except (ValueError, TypeError):
-                return
-            if not isinstance(parsed, dict):
+            parsed = parse_device_meta(payload)
+            if parsed is None:
                 return
             self.device_meta = parsed
             self.module_online = parsed.get("online", True) is not False

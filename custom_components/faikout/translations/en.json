@@ -32,6 +32,16 @@
         "data": {
           "host": "Hostname"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Faikout",
+        "description": "The broker rejected the stored credentials for {host}. Enter the current ones.",
+        "data": {
+          "mqtt_host": "Broker host",
+          "mqtt_port": "Port",
+          "mqtt_username": "Username",
+          "mqtt_password": "Password"
+        }
       }
     },
     "error": {
@@ -41,7 +51,8 @@
     },
     "abort": {
       "mqtt_not_configured": "The MQTT integration must be set up before adding Faikout.",
-      "already_configured": "This Faikout module is already configured."
+      "already_configured": "This Faikout module is already configured.",
+      "reauth_successful": "Re-authentication successful."
     }
   },
   "options": {

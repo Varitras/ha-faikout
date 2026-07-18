@@ -213,6 +213,25 @@ def device_metadata(meta: dict) -> dict:
     }
 
 
+def parse_device_meta(payload) -> dict | None:
+    """Parse the bare ``state/<host>`` payload under the same bounds as status.
+
+    This topic is just as untrusted as the status one, and the result is kept
+    on the coordinator and written into the device registry.
+    """
+    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
+        return None
+    try:
+        parsed = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if len(parsed) > MAX_STATE_FIELDS:
+        return dict(list(parsed.items())[:MAX_STATE_FIELDS])
+    return parsed
+
+
 # --- State readers ----------------------------------------------------------
 def hvac_mode_from_state(data: dict) -> str | None:
     if not data.get("power", False):
