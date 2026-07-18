@@ -201,3 +201,35 @@ def test_is_valid_host_accepts_normal_names(host):
 )
 def test_is_valid_host_rejects_topic_breaking_names(host):
     assert not const.is_valid_host(host)
+
+
+# --- device identity --------------------------------------------------------
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("AABBCCDDEEFF", "aa:bb:cc:dd:ee:ff"),
+        ("aa:bb:cc:dd:ee:ff", "aa:bb:cc:dd:ee:ff"),
+        ("AA-BB-CC-DD-EE-FF", "aa:bb:cc:dd:ee:ff"),
+        ("", None),
+        (None, None),
+        ("not-a-mac", None),
+        ("AABBCCDDEE", None),   # too short
+    ],
+)
+def test_normalize_mac(raw, expected):
+    assert const.normalize_mac(raw) == expected
+
+
+def test_device_id_prefers_mac():
+    assert const.device_id_for("AABBCCDDEEFF", "GuestAC") == "aa:bb:cc:dd:ee:ff"
+
+
+def test_device_id_falls_back_to_host_without_mac():
+    assert const.device_id_for(None, "GuestAC") == "GuestAC"
+    assert const.device_id_for("garbage", "GuestAC") == "GuestAC"
+
+
+def test_same_host_different_mac_gives_different_identity():
+    a = const.device_id_for("111111111111", "GuestAC")
+    b = const.device_id_for("222222222222", "GuestAC")
+    assert a != b

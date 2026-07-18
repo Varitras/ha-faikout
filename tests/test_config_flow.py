@@ -10,7 +10,9 @@ from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
 from custom_components.faikout.const import (  # noqa: E402
+    CONF_DEVICE_ID,
     CONF_HOST,
+    CONF_MAC,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -76,7 +78,12 @@ async def test_ha_mqtt_path_creates_entry(hass, mock_setup_entry):
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == TEST_HOST
-    assert result["data"] == {CONF_HOST: TEST_HOST}
+    # Nothing was discovered here, so the hostname is the fallback identity.
+    assert result["data"] == {
+        CONF_HOST: TEST_HOST,
+        CONF_MAC: None,
+        CONF_DEVICE_ID: TEST_HOST,
+    }
     # No broker details -> the HA MQTT transport is used.
     assert not result["options"].get(CONF_USE_OWN_MQTT)
 
@@ -139,7 +146,7 @@ async def test_own_broker_path_stores_broker_in_options(hass, mock_setup_entry):
 
     with patch(
         "custom_components.faikout.config_flow.async_discover_on_broker",
-        AsyncMock(return_value={TEST_HOST}),
+        AsyncMock(return_value={TEST_HOST: "AA:BB:CC:DD:EE:FF"}),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], BROKER
@@ -153,8 +160,68 @@ async def test_own_broker_path_stores_broker_in_options(hass, mock_setup_entry):
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_HOST: TEST_HOST}
+    # The MAC seen during discovery becomes the identity, normalised.
+    assert result["data"] == {
+        CONF_HOST: TEST_HOST,
+        CONF_MAC: "AA:BB:CC:DD:EE:FF",
+        CONF_DEVICE_ID: "aa:bb:cc:dd:ee:ff",
+    }
+    assert result["result"].unique_id == "aa:bb:cc:dd:ee:ff"
     assert result["options"] == {CONF_USE_OWN_MQTT: True, **BROKER}
+
+
+async def test_same_hostname_on_two_brokers_can_coexist(hass, mock_setup_entry):
+    """The whole point of the MAC identity: same name, different module."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: "11:11:11:11:11:11"},
+        unique_id="11:11:11:11:11:11",
+    ).add_to_hass(hass)
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], BROKER
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == "22:22:22:22:22:22"
+
+
+async def test_same_module_rediscovered_still_aborts(hass):
+    """Same MAC must still be refused, whatever hostname it reports now."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: "old-name", CONF_DEVICE_ID: "22:22:22:22:22:22"},
+        unique_id="22:22:22:22:22:22",
+    ).add_to_hass(hass)
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], BROKER
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
 
 
 async def test_own_broker_unreachable_shows_error(hass):

@@ -45,7 +45,7 @@ class FaikoutSwitch(FaikoutEntity, SwitchEntity):
         super().__init__(coordinator)
         self._field = field
         self._attr_translation_key = field
-        self._attr_unique_id = f"{coordinator.host}_{field}"
+        self._attr_unique_id = f"{coordinator.device_id}_{field}"
         if field in _DISABLED_BY_DEFAULT:
             self._attr_entity_registry_enabled_default = False
 

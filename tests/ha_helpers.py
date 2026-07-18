@@ -9,10 +9,13 @@ from unittest.mock import patch
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.faikout.const import (
+    CONF_DEVICE_ID,
     CONF_HOST,
+    CONF_MAC,
     DOMAIN,
     state_topic,
     status_topic,
+    device_id_for,
 )
 
 from .conftest import META_PAYLOAD, STATUS_PAYLOAD, TEST_HOST, FakeTransport
@@ -32,13 +35,14 @@ def make_transport(status=None, meta=None):
     )
 
 
-async def setup_integration(hass, transport, options=None):
+async def setup_integration(hass, transport, options=None, mac=None, host=TEST_HOST):
     """Set up the integration with a fake transport; return the config entry."""
+    device_id = device_id_for(mac, host)
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={CONF_HOST: TEST_HOST},
+        data={CONF_HOST: host, CONF_MAC: mac, CONF_DEVICE_ID: device_id},
         options=options or {},
-        unique_id=TEST_HOST,
+        unique_id=device_id,
     )
     entry.add_to_hass(hass)
     with patch(

@@ -46,7 +46,7 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.host}_climate"
+        self._attr_unique_id = f"{coordinator.device_id}_climate"
 
     @property
     def hvac_mode(self) -> HVACMode | None:

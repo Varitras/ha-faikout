@@ -15,6 +15,7 @@ which transport it is using.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -47,6 +48,27 @@ CONNECT_TIMEOUT = 10
 # re-authenticate instead of Home Assistant retrying forever. 4/5 are MQTT 3.1.1
 # (bad user/password, not authorised), 134/135 the MQTT 5 equivalents.
 AUTH_FAILURE_CODES = {4, 5, 134, 135}
+
+
+def collect_module(found: dict, topic: str, payload) -> None:
+    """Record a module seen on ``state/+``, with its MAC when the payload has one.
+
+    The bare state topic carries the app status including ``id`` (the MAC). Both
+    discovery paths funnel through here so they agree on what counts as a module.
+    """
+    parts = topic.split("/")
+    if len(parts) != 2 or parts[0] != "state" or not parts[1]:
+        return
+    host = parts[1]
+    found.setdefault(host, None)
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode(errors="replace")
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        return
+    if isinstance(data, dict) and data.get("id"):
+        found[host] = data["id"]
 
 
 def _is_failure(reason_code) -> bool:
@@ -263,8 +285,11 @@ async def async_discover_on_broker(
     username: str | None,
     password: str | None,
     seconds: float = 3.0,
-) -> set[str]:
-    """Briefly connect to a broker and collect Faikout hostnames from state/+.
+) -> dict[str, str | None]:
+    """Briefly connect to a broker and collect Faikout modules from state/+.
+
+    Returns hostname -> MAC (None when the module did not report one in the
+    listening window).
 
     Used by the config flow when the user sets up an own broker, so devices on
     that broker can be discovered without Home Assistant's MQTT integration.
@@ -277,7 +302,7 @@ async def async_discover_on_broker(
 
     import paho.mqtt.client as paho
 
-    hosts: set[str] = set()
+    hosts: dict[str, str | None] = {}
 
     def _collect() -> None:
         client = paho.Client(paho.CallbackAPIVersion.VERSION2)
@@ -294,9 +319,7 @@ async def async_discover_on_broker(
                 c.subscribe(DISCOVERY_TOPIC, 0)
 
         def _on_message(c, userdata, msg):
-            parts = msg.topic.split("/")
-            if len(parts) == 2 and parts[0] == "state" and parts[1]:
-                hosts.add(parts[1])
+            collect_module(hosts, msg.topic, msg.payload)
 
         client.on_connect = _on_connect
         client.on_message = _on_message

@@ -33,3 +33,51 @@ def test_own_mqtt_selected_when_enabled_with_host():
 def test_own_mqtt_falls_back_without_host():
     t = transport.create_transport(object(), _entry({CONF_USE_OWN_MQTT: True}))
     assert isinstance(t, transport.HaMqttTransport)
+
+
+# --- discovery payload parsing ----------------------------------------------
+# collect_module is what actually turns broker traffic into "which modules exist
+# and what is their MAC", so it gets tested directly rather than through a mock.
+def test_collect_module_extracts_mac():
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    collect_module(found, "state/GuestAC", '{"app":"Faikin","id":"AABBCCDDEEFF"}')
+    assert found == {"GuestAC": "AABBCCDDEEFF"}
+
+
+def test_collect_module_accepts_bytes():
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    collect_module(found, "state/GuestAC", b'{"id":"AABBCCDDEEFF"}')
+    assert found["GuestAC"] == "AABBCCDDEEFF"
+
+
+def test_collect_module_records_host_without_mac():
+    """A module still counts as found when the payload carries no id."""
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    collect_module(found, "state/GuestAC", "true")
+    assert found == {"GuestAC": None}
+
+
+def test_collect_module_keeps_known_mac_on_later_presence_message():
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    collect_module(found, "state/GuestAC", '{"id":"AABBCCDDEEFF"}')
+    collect_module(found, "state/GuestAC", "false")
+    assert found["GuestAC"] == "AABBCCDDEEFF"
+
+
+@pytest.mark.parametrize(
+    "topic", ["state", "state/", "state/GuestAC/status", "other/GuestAC"]
+)
+def test_collect_module_ignores_other_topics(topic):
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    collect_module(found, topic, '{"id":"AABBCCDDEEFF"}')
+    assert found == {}

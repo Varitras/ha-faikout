@@ -21,17 +21,24 @@ from .const import (
     DEFAULT_MQTT_PORT,
     DEFAULT_UPDATE_INTERVAL,
     DISCOVERY_TOPIC,
+    CONF_DEVICE_ID,
+    CONF_MAC,
     DOMAIN,
+    device_id_for,
     is_valid_host,
 )
-from .transport import MqttConnectionRefused, async_discover_on_broker
+from .transport import (
+    MqttConnectionRefused,
+    async_discover_on_broker,
+    collect_module,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 DISCOVERY_SECONDS = 3.0
 
 
-def _host_selector(discovered: set[str]):
+def _host_selector(discovered):
     """Dropdown of discovered hosts (free text still allowed), else a text box."""
     if discovered:
         return selector.SelectSelector(
@@ -52,7 +59,17 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._broker: dict = {}
-        self._discovered: set[str] = set()
+        # hostname -> MAC (None when the module did not announce one)
+        self._discovered: dict = {}
+
+    @staticmethod
+    def _entry_data(host: str, mac) -> dict:
+        """Freeze the identity at setup time so it never shifts later."""
+        return {
+            CONF_HOST: host,
+            CONF_MAC: mac,
+            CONF_DEVICE_ID: device_id_for(mac, host),
+        }
 
     async def async_step_user(
         self, user_input: dict | None = None
@@ -75,14 +92,18 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             if not is_valid_host(host):
                 errors["base"] = "invalid_host"
             else:
-                await self.async_set_unique_id(host)
+                mac = self._discovered.get(host)
+                await self.async_set_unique_id(device_id_for(mac, host))
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=host, data={CONF_HOST: host})
+                return self.async_create_entry(
+                    title=host, data=self._entry_data(host, mac)
+                )
 
+        self._discovered = await self._discover_hosts()
         return self.async_show_form(
             step_id="ha_mqtt",
             data_schema=vol.Schema(
-                {vol.Required(CONF_HOST): _host_selector(await self._discover_hosts())}
+                {vol.Required(CONF_HOST): _host_selector(self._discovered)}
             ),
             errors=errors,
         )
@@ -157,11 +178,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             if not is_valid_host(host):
                 errors["base"] = "invalid_host"
             else:
-                await self.async_set_unique_id(host)
+                mac = self._discovered.get(host)
+                await self.async_set_unique_id(device_id_for(mac, host))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=host,
-                    data={CONF_HOST: host},
+                    data=self._entry_data(host, mac),
                     options={CONF_USE_OWN_MQTT: True, **self._broker},
                 )
 
@@ -173,15 +195,13 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _discover_hosts(self) -> set[str]:
-        """Listen briefly on state/+ and collect module hostnames."""
-        hosts: set[str] = set()
+    async def _discover_hosts(self) -> dict:
+        """Listen briefly on state/+ and collect modules with their MACs."""
+        hosts: dict = {}
 
         @callback
         def _on_message(msg: mqtt.ReceiveMessage) -> None:
-            parts = msg.topic.split("/")
-            if len(parts) == 2 and parts[0] == "state" and parts[1]:
-                hosts.add(parts[1])
+            collect_module(hosts, msg.topic, msg.payload)
 
         unsub = await mqtt.async_subscribe(self.hass, DISCOVERY_TOPIC, _on_message)
         try:

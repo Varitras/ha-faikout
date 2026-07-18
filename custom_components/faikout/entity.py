@@ -24,11 +24,12 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
     def _build_device_info(self) -> DeviceInfo:
         coordinator = self.coordinator
         meta = device_metadata(coordinator.device_meta)
+        mac = meta["mac"] or coordinator.mac
         connections = (
-            {(CONNECTION_NETWORK_MAC, format_mac(meta["mac"]))} if meta["mac"] else set()
+            {(CONNECTION_NETWORK_MAC, format_mac(mac))} if mac else set()
         )
         return DeviceInfo(
-            identifiers={(DOMAIN, coordinator.host)},
+            identifiers={(DOMAIN, coordinator.device_id)},
             connections=connections,
             name=coordinator.host,
             manufacturer="Faikin / RevK",

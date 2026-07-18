@@ -13,7 +13,9 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_DEVICE_ID,
     CONF_HOST,
+    CONF_MAC,
     DOMAIN,
     control_topic,
     device_metadata,
@@ -40,6 +42,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         host = entry.data[CONF_HOST]
         super().__init__(hass, _LOGGER, config_entry=entry, name=f"faikout_{host}")
         self.host = host
+        # Identity HA keys on. Frozen in the config entry at setup time, so it
+        # never changes under a running installation.
+        self.device_id = entry.data.get(CONF_DEVICE_ID) or host
+        self.mac = entry.data.get(CONF_MAC)
         self._transport = transport
         self._unsub = None
         self._unsub_meta = None
@@ -118,7 +124,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if meta == self._registered_meta:
             return
         registry = dr.async_get(self.hass)
-        device = registry.async_get_device(identifiers={(DOMAIN, self.host)})
+        device = registry.async_get_device(identifiers={(DOMAIN, self.device_id)})
         if device is None:
             return  # entities not created yet; they will pick it up themselves
         self._registered_meta = meta

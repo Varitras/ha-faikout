@@ -214,7 +214,7 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
     def __init__(self, coordinator, description: SensorEntityDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.host}_{description.key}"
+        self._attr_unique_id = f"{coordinator.device_id}_{description.key}"
 
     @property
     def native_value(self):

@@ -11,6 +11,11 @@ import json
 DOMAIN = "faikout"
 PLATFORMS = ["climate", "sensor", "switch"]
 CONF_HOST = "host"
+# Stable per-module identity (MAC when known, hostname otherwise). Everything
+# HA keys on — config entry, device, entity unique ids — uses this, never the
+# hostname directly.
+CONF_DEVICE_ID = "device_id"
+CONF_MAC = "mac"
 DISCOVERY_TOPIC = "state/+"
 
 # Option: throttle how often incoming MQTT updates are pushed into HA entities.
@@ -28,6 +33,27 @@ CONF_MQTT_PORT = "mqtt_port"
 CONF_MQTT_USERNAME = "mqtt_username"
 CONF_MQTT_PASSWORD = "mqtt_password"
 DEFAULT_MQTT_PORT = 1883
+
+
+def normalize_mac(mac) -> str | None:
+    """Lowercase colon-separated MAC, or None if it is not one."""
+    if not mac:
+        return None
+    cleaned = "".join(c for c in str(mac).lower() if c in "0123456789abcdef")
+    if len(cleaned) != 12:
+        return None
+    return ":".join(cleaned[i : i + 2] for i in range(0, 12, 2))
+
+
+def device_id_for(mac, host: str) -> str:
+    """Stable identity for one module: its MAC when known, else the hostname.
+
+    A hostname is only unique within a single broker, so two modules with the
+    same name on different brokers would otherwise look like one device. The
+    MAC comes from the bare state topic during discovery; a hand-typed hostname
+    has none, which is why the fallback exists.
+    """
+    return normalize_mac(mac) or host
 
 
 def is_valid_host(host: str) -> bool:
