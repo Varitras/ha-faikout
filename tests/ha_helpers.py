@@ -12,6 +12,7 @@ from custom_components.faikout.const import (
     CONF_DEVICE_ID,
     CONF_HOST,
     CONF_MAC,
+    CONF_UPDATE_INTERVAL,
     DOMAIN,
     state_topic,
     status_topic,
@@ -41,7 +42,10 @@ async def setup_integration(hass, transport, options=None, mac=None, host=TEST_H
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: host, CONF_MAC: mac, CONF_DEVICE_ID: device_id},
-        options=options or {},
+        # Real-time unless a test is specifically about the throttle. The
+        # shipped default coalesces, which would otherwise silently swallow the
+        # per-message assertions these tests are making.
+        options=options if options is not None else {CONF_UPDATE_INTERVAL: 0},
         unique_id=device_id,
     )
     entry.add_to_hass(hass)

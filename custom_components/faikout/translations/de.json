@@ -60,7 +60,7 @@
       "init": {
         "title": "Faikout-Optionen",
         "data": {
-          "update_interval": "Update-Intervall (Sekunden, 0 = Echtzeit)",
+          "update_interval": "Update-Intervall (Sekunden, 0 = jede Nachricht)",
           "use_own_mqtt": "Eigenen MQTT-Client verwenden (separater Broker)",
           "mqtt_host": "MQTT-Broker-Host",
           "mqtt_port": "MQTT-Port",

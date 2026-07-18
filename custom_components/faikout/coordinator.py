@@ -115,6 +115,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         payload = msg.payload
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode(errors="replace")
+        was_online = self.module_online
         if payload in ("true", "false", "online", "offline"):
             self.module_online = payload in ("true", "online")
         else:
@@ -124,6 +125,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             self.device_meta = parsed
             self.module_online = parsed.get("online", True) is not False
             self._update_device_registry()
+        if self.module_online != was_online:
+            # Availability, like a lost broker link, must not sit in the update
+            # throttle: "this device is gone" is exactly the news a user needs
+            # promptly, and holding it back shows stale values as live.
+            self._flush()
+            return
         self._maybe_push()
 
     @callback

@@ -30,7 +30,10 @@ DISCOVERY_TOPIC = "state/+"
 # 0 = real-time (every message). N>0 = at most one update per N seconds
 # (the latest value is always flushed). Purely HA-side; does not touch the device.
 CONF_UPDATE_INTERVAL = "update_interval"
-DEFAULT_UPDATE_INTERVAL = 0
+# Default to coalescing updates into one push per 10s. The module reports on
+# every change, which for a running AC is far more often than anyone needs and
+# writes a row to the recorder each time. Set 0 for every message.
+DEFAULT_UPDATE_INTERVAL = 10
 
 # Option: use an own MQTT client (connect directly to a broker) instead of the
 # shared Home Assistant MQTT integration. Useful when the Faikout lives on a

@@ -492,3 +492,19 @@ async def test_first_state_is_not_delayed_by_the_throttle(hass):
     await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
 
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+
+
+async def test_going_offline_is_not_delayed_by_the_throttle(hass):
+    """Availability must not wait: a stale value shown as live is worse."""
+    from homeassistant.const import STATE_UNAVAILABLE as _UNAVAILABLE
+
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL, state_topic
+
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
+    assert hass.states.get(CLIMATE).state != _UNAVAILABLE
+
+    transport.feed(state_topic(TEST_HOST), "false")
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).state == _UNAVAILABLE

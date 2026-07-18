@@ -281,3 +281,8 @@ def test_device_metadata_truncates_text_fields():
     meta = const.device_metadata({"app": "A" * 500, "version": "V" * 500})
     assert len(meta["model"]) <= const.MAX_META_TEXT
     assert len(meta["sw_version"]) <= const.MAX_META_TEXT
+
+
+def test_default_update_interval_coalesces():
+    """Default is a throttle, not real-time: 10s, and 0 stays available."""
+    assert const.DEFAULT_UPDATE_INTERVAL == 10

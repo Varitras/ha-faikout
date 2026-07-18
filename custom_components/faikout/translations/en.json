@@ -60,7 +60,7 @@
       "init": {
         "title": "Faikout options",
         "data": {
-          "update_interval": "Update interval (seconds, 0 = real-time)",
+          "update_interval": "Update interval (seconds, 0 = every message)",
           "use_own_mqtt": "Use own MQTT client (separate broker)",
           "mqtt_host": "MQTT broker host",
           "mqtt_port": "MQTT port",
