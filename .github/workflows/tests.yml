@@ -63,6 +63,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # Drop this once brand/ has been submitted to home-assistant/brands;
-          # until that lands there is no icon for the check to find.
-          ignore: brands
