@@ -22,6 +22,7 @@ def test_default_uses_ha_mqtt():
 
 
 def test_own_mqtt_selected_when_enabled_with_host():
+    pytest.importorskip("paho.mqtt.client")  # own transport needs paho
     t = transport.create_transport(
         object(),
         _entry({CONF_USE_OWN_MQTT: True, CONF_MQTT_HOST: "192.168.1.10"}),
