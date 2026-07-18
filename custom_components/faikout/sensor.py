@@ -15,6 +15,7 @@ from homeassistant.const import (
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfEnergy,
+    UnitOfFrequency,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -84,15 +85,24 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
     _energy("Whheating", "energy_heating"),
     _energy("Whcooling", "energy_cooling"),
     SensorEntityDescription(
+        key="demand",
+        translation_key="demand",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    # /status carries unit-STABLE speeds regardless of the hafanrpm/hacomprpm
+    # device setting (verified live): fanrpm is always RPM, comp always Hz.
+    SensorEntityDescription(
         key="fanrpm",
         translation_key="fan_speed",
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key="demand",
-        translation_key="demand",
-        native_unit_of_measurement=PERCENTAGE,
+        key="comp",
+        translation_key="compressor",
+        device_class=SensorDeviceClass.FREQUENCY,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     # From the bare state/<host> topic (device_meta), not /status.
