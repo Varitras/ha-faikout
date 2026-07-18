@@ -16,11 +16,14 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfEnergy,
     UnitOfFrequency,
+    UnitOfInformation,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
@@ -57,6 +60,17 @@ def _energy(key: str, translation_key: str) -> FaikoutSensorDescription:
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
         factor=0.001,
+    )
+
+
+def _diag(key: str, translation_key: str, source: str = "meta", **kw) -> FaikoutSensorDescription:
+    """A diagnostic sensor (device 'Diagnostic' section)."""
+    return FaikoutSensorDescription(
+        key=key,
+        translation_key=translation_key,
+        source=source,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        **kw,
     )
 
 
@@ -124,6 +138,47 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         state_class=SensorStateClass.TOTAL_INCREASING,
         factor=0.001,
     ),
+    # Diagnostics (bare topic; 'protocol' from /status).
+    _diag("ts", "last_report", device_class=SensorDeviceClass.TIMESTAMP),
+    _diag(
+        "uptime",
+        "uptime",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+    ),
+    _diag(
+        "mqtt-up",
+        "mqtt_up",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+    ),
+    _diag(
+        "mem",
+        "free_memory",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    _diag(
+        "spi",
+        "free_spiram",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    _diag(
+        "flash",
+        "flash",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+    ),
+    _diag("chan", "wifi_channel"),
+    _diag("rst", "reset_reason"),
+    _diag("ssid", "ssid"),
+    _diag("bssid", "bssid"),
+    _diag("ipv4", "ip_address"),
+    _diag("build", "build"),
+    _diag("protocol", "protocol", source="status"),
 ]
 
 
@@ -171,7 +226,11 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         raw = _source_dict(self.coordinator, self.entity_description).get(
             self.entity_description.key
         )
+        if raw is None:
+            return None
+        if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP:
+            return dt_util.parse_datetime(raw) if isinstance(raw, str) else raw
         factor = getattr(self.entity_description, "factor", 1.0)
-        if raw is None or factor == 1.0:
+        if factor == 1.0:
             return raw
         return round(raw * factor, 3)

@@ -27,7 +27,20 @@
       "compressor": { "name": "Kompressor" },
       "demand": { "name": "Anforderung" },
       "wifi_signal": { "name": "WLAN-Signal" },
-      "energy_total": { "name": "Energie gesamt" }
+      "energy_total": { "name": "Energie gesamt" },
+      "last_report": { "name": "Letzte Meldung" },
+      "uptime": { "name": "Betriebszeit" },
+      "mqtt_up": { "name": "MQTT-Verbindungsdauer" },
+      "free_memory": { "name": "Freier Speicher" },
+      "free_spiram": { "name": "Freier SPI-RAM" },
+      "flash": { "name": "Flash-Größe" },
+      "wifi_channel": { "name": "WLAN-Kanal" },
+      "reset_reason": { "name": "Reset-Grund" },
+      "ssid": { "name": "WLAN-SSID" },
+      "bssid": { "name": "WLAN-BSSID" },
+      "ip_address": { "name": "IP-Adresse" },
+      "build": { "name": "Firmware-Build" },
+      "protocol": { "name": "Protokoll" }
     },
     "switch": {
       "powerful": { "name": "Powerful" },

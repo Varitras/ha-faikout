@@ -27,7 +27,20 @@
       "compressor": { "name": "Compressor" },
       "demand": { "name": "Demand" },
       "wifi_signal": { "name": "WiFi signal" },
-      "energy_total": { "name": "Energy total" }
+      "energy_total": { "name": "Energy total" },
+      "last_report": { "name": "Last report" },
+      "uptime": { "name": "Uptime" },
+      "mqtt_up": { "name": "MQTT uptime" },
+      "free_memory": { "name": "Free memory" },
+      "free_spiram": { "name": "Free SPI RAM" },
+      "flash": { "name": "Flash size" },
+      "wifi_channel": { "name": "WiFi channel" },
+      "reset_reason": { "name": "Reset reason" },
+      "ssid": { "name": "WiFi SSID" },
+      "bssid": { "name": "WiFi BSSID" },
+      "ip_address": { "name": "IP address" },
+      "build": { "name": "Firmware build" },
+      "protocol": { "name": "Protocol" }
     },
     "switch": {
       "powerful": { "name": "Powerful" },
