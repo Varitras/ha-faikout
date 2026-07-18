@@ -5,11 +5,13 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, PLATFORMS
 from .coordinator import FaikoutConfigEntry, FaikoutCoordinator
+from .transport import create_transport
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: FaikoutConfigEntry) -> bool:
     """Set up Faikout from a config entry."""
-    coordinator = FaikoutCoordinator(hass, entry)
+    transport = create_transport(hass, entry)
+    coordinator = FaikoutCoordinator(hass, entry, transport)
     coordinator.set_update_interval(
         entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
     )

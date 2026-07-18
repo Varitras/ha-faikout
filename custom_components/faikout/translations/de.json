@@ -18,9 +18,17 @@
       "init": {
         "title": "Faikout-Optionen",
         "data": {
-          "update_interval": "Update-Intervall (Sekunden, 0 = Echtzeit)"
+          "update_interval": "Update-Intervall (Sekunden, 0 = Echtzeit)",
+          "use_own_mqtt": "Eigenen MQTT-Client verwenden (separater Broker)",
+          "mqtt_host": "MQTT-Broker-Host",
+          "mqtt_port": "MQTT-Port",
+          "mqtt_username": "MQTT-Benutzername",
+          "mqtt_password": "MQTT-Passwort"
         }
       }
+    },
+    "error": {
+      "host_required": "Bitte den Broker-Host angeben, wenn ein eigener MQTT-Client genutzt wird."
     }
   },
   "entity": {

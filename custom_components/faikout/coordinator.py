@@ -5,13 +5,13 @@ import asyncio
 import json
 import logging
 
-from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import CONF_HOST, control_topic, merge_state, state_topic, status_topic
+from .transport import FaikoutTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +21,16 @@ type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     """Holds the latest state dict for one Faikout module."""
 
-    def __init__(self, hass: HomeAssistant, entry: "FaikoutConfigEntry") -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: "FaikoutConfigEntry",
+        transport: FaikoutTransport,
+    ) -> None:
         host = entry.data[CONF_HOST]
         super().__init__(hass, _LOGGER, config_entry=entry, name=f"faikout_{host}")
         self.host = host
+        self._transport = transport
         self._unsub = None
         self._unsub_meta = None
         self._first_data = asyncio.Event()
@@ -45,16 +51,17 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._min_interval = max(0.0, float(seconds or 0))
 
     async def async_start(self) -> None:
-        self._unsub = await mqtt.async_subscribe(
-            self.hass, status_topic(self.host), self._message_received
+        await self._transport.async_connect()
+        self._unsub = await self._transport.async_subscribe(
+            status_topic(self.host), self._message_received
         )
         # Second subscription: bare state/<host> for device metadata + LWT presence.
-        self._unsub_meta = await mqtt.async_subscribe(
-            self.hass, state_topic(self.host), self._meta_received
+        self._unsub_meta = await self._transport.async_subscribe(
+            state_topic(self.host), self._meta_received
         )
 
     @callback
-    def _meta_received(self, msg: mqtt.ReceiveMessage) -> None:
+    def _meta_received(self, msg) -> None:
         payload = msg.payload
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode(errors="replace")
@@ -72,7 +79,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._maybe_push()
 
     @callback
-    def _message_received(self, msg: mqtt.ReceiveMessage) -> None:
+    def _message_received(self, msg) -> None:
         payload = msg.payload
         if isinstance(payload, (bytes, bytearray)):
             payload = payload.decode(errors="replace")
@@ -129,8 +136,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_send_control(self, **fields) -> None:
         try:
-            await mqtt.async_publish(
-                self.hass, control_topic(self.host), json.dumps(fields)
+            await self._transport.async_publish(
+                control_topic(self.host), json.dumps(fields)
             )
         except Exception:  # noqa: BLE001 - never let a command crash the entity
             _LOGGER.exception("Failed to publish control to %s: %s", self.host, fields)
@@ -145,4 +152,5 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if self._flush_unsub is not None:
             self._flush_unsub()
             self._flush_unsub = None
+        await self._transport.async_stop()
         await super().async_shutdown()

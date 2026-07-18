@@ -20,6 +20,7 @@ MODULES = [
     "custom_components.faikout",
     "custom_components.faikout.const",
     "custom_components.faikout.coordinator",
+    "custom_components.faikout.transport",
     "custom_components.faikout.entity",
     "custom_components.faikout.config_flow",
     "custom_components.faikout.climate",

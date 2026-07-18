@@ -12,7 +12,13 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_HOST,
+    CONF_MQTT_HOST,
+    CONF_MQTT_PASSWORD,
+    CONF_MQTT_PORT,
+    CONF_MQTT_USERNAME,
     CONF_UPDATE_INTERVAL,
+    CONF_USE_OWN_MQTT,
+    DEFAULT_MQTT_PORT,
     DEFAULT_UPDATE_INTERVAL,
     DISCOVERY_TOPIC,
     DOMAIN,
@@ -84,21 +90,24 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FaikoutOptionsFlow(OptionsFlow):
-    """Options: throttle how often MQTT updates are pushed into HA."""
+    """Options: update throttle and an optional own MQTT client."""
 
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if user_input.get(CONF_USE_OWN_MQTT) and not user_input.get(CONF_MQTT_HOST):
+                errors[CONF_MQTT_HOST] = "host_required"
+            else:
+                return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(
-            CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
-        )
+        o = self.config_entry.options
         schema = vol.Schema(
             {
                 vol.Required(
-                    CONF_UPDATE_INTERVAL, default=current
+                    CONF_UPDATE_INTERVAL,
+                    default=o.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,
@@ -107,7 +116,37 @@ class FaikoutOptionsFlow(OptionsFlow):
                         unit_of_measurement="s",
                         mode=selector.NumberSelectorMode.BOX,
                     )
-                )
+                ),
+                vol.Required(
+                    CONF_USE_OWN_MQTT,
+                    default=o.get(CONF_USE_OWN_MQTT, False),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_MQTT_HOST,
+                    default=o.get(CONF_MQTT_HOST, ""),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_MQTT_PORT,
+                    default=o.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Optional(
+                    CONF_MQTT_USERNAME,
+                    default=o.get(CONF_MQTT_USERNAME, ""),
+                ): selector.TextSelector(),
+                vol.Optional(
+                    CONF_MQTT_PASSWORD,
+                    default=o.get(CONF_MQTT_PASSWORD, ""),
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD
+                    )
+                ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init", data_schema=schema, errors=errors
+        )

@@ -19,6 +19,16 @@ DISCOVERY_TOPIC = "state/+"
 CONF_UPDATE_INTERVAL = "update_interval"
 DEFAULT_UPDATE_INTERVAL = 0
 
+# Option: use an own MQTT client (connect directly to a broker) instead of the
+# shared Home Assistant MQTT integration. Useful when the Faikout lives on a
+# different broker than HA's MQTT client.
+CONF_USE_OWN_MQTT = "use_own_mqtt"
+CONF_MQTT_HOST = "mqtt_host"
+CONF_MQTT_PORT = "mqtt_port"
+CONF_MQTT_USERNAME = "mqtt_username"
+CONF_MQTT_PASSWORD = "mqtt_password"
+DEFAULT_MQTT_PORT = 1883
+
 
 def state_topic(host: str) -> str:
     return f"state/{host}"
