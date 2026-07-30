@@ -129,7 +129,7 @@ Reachable later via *Configure* on the integration entry:
 
 | Platform | What |
 |---|---|
-| **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan (auto, 1–5), swing |
+| **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan (auto, quiet, 1–5), swing |
 | **Number** | demand — the output limit in percent, 30 to 100 in steps of 5 |
 | **Sensors** | room / outside / inlet / coil temperature, humidity, power, energy (total, heating, cooling), compressor frequency, fan speed |
 | **Diagnostics** | uptime, MQTT uptime, free memory, free SPI RAM, flash size, WiFi SSID/BSSID/channel/signal, IP address, reset reason, firmware build, protocol, last report |

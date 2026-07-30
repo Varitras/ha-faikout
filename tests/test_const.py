@@ -35,11 +35,10 @@ def test_mode_mapping_roundtrip():
     assert const.HVAC_MODES[0] == "off"
 
 
-# "quiet" is a separate boolean flag on the device, not a fan value: fan
-# stays "A"/"auto" while the quiet switch toggles independently. A legacy
-# "Q" fan value maps to auto.
+# Fan value "Q" is the quiet/night step. The separate "quiet" boolean flag is
+# the outdoor quiet setting, unrelated to this.
 @pytest.mark.parametrize(
-    "dev,ha", [("A", "auto"), ("Q", "auto"), ("a", "auto"), (1, "1"), ("3", "3")]
+    "dev,ha", [("A", "auto"), ("Q", "quiet"), ("q", "quiet"), ("a", "auto"), (1, "1"), ("3", "3")]
 )
 def test_fan_dev_to_ha(dev, ha):
     assert const.fan_dev_to_ha(dev) == ha
@@ -49,12 +48,17 @@ def test_fan_dev_to_ha_none():
     assert const.fan_dev_to_ha(None) is None
 
 
-def test_fan_modes_have_no_quiet():
-    assert "quiet" not in const.FAN_MODES
-    assert const.FAN_MODES == ["auto", "1", "2", "3", "4", "5"]
+def test_fan_modes_include_quiet_step():
+    assert const.FAN_MODES == ["auto", "quiet", "1", "2", "3", "4", "5"]
 
 
-def test_quiet_is_a_switch_field():
+def test_fan_quiet_roundtrip():
+    assert const.fan_ha_to_dev("quiet") == "Q"
+    assert const.fan_dev_to_ha("Q") == "quiet"
+
+
+def test_quiet_is_also_a_switch_field():
+    # The outdoor-quiet boolean is a different device function from the fan step.
     assert "quiet" in const.SWITCH_FIELDS
 
 
@@ -81,9 +85,12 @@ def test_device_metadata_defaults():
     }
 
 
-@pytest.mark.parametrize("ha,dev", [("auto", "A"), ("1", 1), ("5", 5)])
+# The device only acts on the string form of a fan level, not the number.
+@pytest.mark.parametrize("ha,dev", [("auto", "A"), ("1", "1"), ("5", "5")])
 def test_fan_ha_to_dev(ha, dev):
-    assert const.fan_ha_to_dev(ha) == dev
+    result = const.fan_ha_to_dev(ha)
+    assert result == dev
+    assert isinstance(result, str)
 
 
 @pytest.mark.parametrize("v,h,expected", [
@@ -143,7 +150,7 @@ def test_build_temperature_command():
 
 
 def test_build_fan_command_numeric():
-    assert const.build_fan_command("3") == {"fan": 3}
+    assert const.build_fan_command("3") == {"fan": "3"}
 
 
 def test_build_fan_command_auto():

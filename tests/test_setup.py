@@ -71,7 +71,7 @@ async def test_climate_updates_on_new_message(hass):
         ("set_temperature", {"temperature": 23}, {"temp": 23}),
         ("set_hvac_mode", {"hvac_mode": "cool"}, {"power": True, "mode": "C"}),
         ("set_hvac_mode", {"hvac_mode": "off"}, {"power": False}),
-        ("set_fan_mode", {"fan_mode": "3"}, {"fan": 3}),
+        ("set_fan_mode", {"fan_mode": "3"}, {"fan": "3"}),
         ("set_fan_mode", {"fan_mode": "auto"}, {"fan": "A"}),
         ("set_swing_mode", {"swing_mode": "both"}, {"swingv": True, "swingh": True}),
         ("turn_off", {}, {"power": False}),

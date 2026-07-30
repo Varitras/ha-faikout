@@ -150,25 +150,32 @@ ACTION_IDLE = "idle"
 ACTION_FAN = "fan"
 
 # --- Fan --------------------------------------------------------------------
-# The device reports "quiet" as a separate boolean flag (see SWITCH_FIELDS),
-# NOT as a fan value. Fan levels are auto + manual 1-5.
+# Fan levels: auto ("A"), a quiet/night step ("Q"), and manual 1-5. The device
+# fan value is a string; a numeric value is silently ignored (verified live:
+# {"fan": 3} does nothing, {"fan": "3"} works). The separate "quiet" boolean
+# flag (see SWITCH_FIELDS) is the OUTDOOR quiet setting, unrelated to this step.
 FAN_AUTO = "auto"
-FAN_MODES = [FAN_AUTO, "1", "2", "3", "4", "5"]
+FAN_QUIET = "quiet"
+FAN_MODES = [FAN_AUTO, FAN_QUIET, "1", "2", "3", "4", "5"]
 
 
 def fan_dev_to_ha(value) -> str | None:
     if value is None:
         return None
     s = str(value).upper()
-    if s in ("A", "Q"):  # "Q" (legacy quiet-as-fan) maps to auto
+    if s == "A":
         return FAN_AUTO
+    if s == "Q":
+        return FAN_QUIET
     return str(value)
 
 
-def fan_ha_to_dev(mode: str):
+def fan_ha_to_dev(mode: str) -> str:
     if mode == FAN_AUTO:
         return "A"
-    return int(mode)
+    if mode == FAN_QUIET:
+        return "Q"
+    return str(mode)
 
 
 # --- Swing ------------------------------------------------------------------
