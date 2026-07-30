@@ -261,3 +261,20 @@ async def test_no_demand_entity_when_the_model_does_not_report_it(hass):
     status = {k: v for k, v in STATUS_PAYLOAD.items() if k != "demand"}
     await setup_integration(hass, make_transport(status=status))
     assert hass.states.get(f"number.{TEST_HOST}_demand") is None
+
+
+async def test_heartbeat_meta_does_not_drop_diagnostics(hass):
+    """Short bare-state heartbeat must not wipe fields from the full status."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
+
+    # device sends its periodic heartbeat: only id/ts/up/uptime, no ip/mem/wifi
+    transport.feed(
+        state_topic(TEST_HOST),
+        json.dumps({"id": "AABBCCDDEEFF", "ts": "2026-07-18T20:00:00Z", "uptime": 999}),
+    )
+    await hass.async_block_till_done()
+
+    # diagnostics from the earlier full status must survive
+    assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"

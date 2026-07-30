@@ -18,6 +18,7 @@ from .const import (
     CONF_HOST,
     CONF_MAC,
     DOMAIN,
+    MAX_STATE_FIELDS,
     control_topic,
     device_metadata,
     merge_state,
@@ -131,7 +132,15 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             parsed = parse_device_meta(payload)
             if parsed is None:
                 return
-            self.device_meta = parsed
+            # Merge, do not replace. The device sends a short heartbeat on this
+            # topic (id/ts/up/uptime/mqtt-up) far more often than the full app
+            # status that carries mem/flash/wifi/ip/build. Replacing would drop
+            # every diagnostic the heartbeat omits, leaving those entities
+            # Unavailable until the next full status. New keys stop at the cap,
+            # known keys always update - same rule the status topic uses.
+            for key, value in parsed.items():
+                if key in self.device_meta or len(self.device_meta) < MAX_STATE_FIELDS:
+                    self.device_meta[key] = value
             self.module_online = parsed.get("online", True) is not False
             self._update_device_registry()
         if self.module_online != was_online:
