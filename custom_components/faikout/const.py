@@ -370,6 +370,11 @@ def hvac_action_from_state(data: dict) -> str | None:
     the unit is circulating air but neither heating nor cooling, which is
     exactly Home Assistant's "idle". Without that check a unit sitting at its
     setpoint would keep claiming to cool.
+
+    Only S21 reports it - the CN_WIRED and X50A decoders never set it - so on
+    those the selected mode is all there is to go on. That names the direction
+    correctly and can overstate a unit resting at its setpoint, which is the
+    better half of the trade against reporting nothing at all.
     """
     if not as_bool(data.get("power", False)):
         return ACTION_OFF
@@ -380,10 +385,12 @@ def hvac_action_from_state(data: dict) -> str | None:
     mode = data.get("mode")
     if mode == "F":
         return ACTION_FAN
-    comp = data.get("comp")
-    running = None
-    if isinstance(comp, (int, float)) and not isinstance(comp, bool):
-        running = comp > 0
+    # as_number rejects what a frequency cannot be: a bool, and NaN or an
+    # infinity, both of which json.loads accepts and neither of which can be
+    # compared into a sensible answer. The sensors drop them for the same
+    # reason, and this path must not be the one place that lets them through.
+    comp = as_number(data.get("comp"))
+    running = None if comp is None else comp > 0
     if running is False:
         return ACTION_IDLE
     if as_bool(data.get("heat")):

@@ -140,6 +140,11 @@ resolution come from the protocol it reports — S21 has five steps and 0.5 °C,
 1 °C, X50A and Altherma_S 0.1 °C. Vertical and horizontal swing are separate controls, each offered
 only when the unit actually reports that axis.
 
+The current activity (heating, cooling, idle) is derived, since no Faikin protocol reports it directly.
+Only S21 sends a compressor frequency, which is what tells idle apart from working; on CN_WIRED and
+X50A the activity follows the selected mode, so a unit resting at its setpoint still reads as heating
+or cooling. In `heat_cool` the direction cannot be determined at all and the activity stays unknown.
+
 Entities are only created for the fields your module actually reports, and appear automatically when a
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
 settings if you want them.

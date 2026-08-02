@@ -437,6 +437,18 @@ def test_hvac_action_ignores_a_bool_compressor_value():
     assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": False}) == "cooling"
 
 
+@pytest.mark.parametrize("comp", [float("nan"), float("inf"), float("-inf")])
+def test_hvac_action_ignores_a_non_finite_compressor_value(comp):
+    """json.loads accepts NaN and Infinity, and neither can be compared.
+
+    Read literally, NaN would look like a stopped compressor and an infinity
+    like a running one. Treat both as no reading at all, exactly as the
+    sensors do.
+    """
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": comp}) == "cooling"
+    assert const.hvac_action_from_state({"power": True, "mode": "A", "comp": comp}) is None
+
+
 # --- auto mode has no cooling flag of its own -------------------------------
 @pytest.mark.parametrize(
     ("data", "expected"),
