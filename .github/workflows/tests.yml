@@ -18,11 +18,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Catches deprecations and API breakage early.
-          - label: current HA
+          # The current stable Home Assistant. Pinned on purpose: an unpinned
+          # pytest-homeassistant-custom-component tracks the newest release
+          # including betas, so this lane would gate releases on a prerelease.
+          # Bump when a new stable lands (0.13.348 pins 2026.7.4).
+          - label: current HA 2026.7
+            python-version: "3.14"
+            phcc: "==0.13.348"
+            coverage: "--cov=custom_components/faikout --cov-fail-under=90"
+          # Newest release including betas. Advisory: it warns about upcoming
+          # breakage without letting a Home Assistant prerelease block a fix.
+          - label: upcoming HA (advisory)
             python-version: "3.14"
             phcc: ""
-            coverage: "--cov=custom_components/faikout --cov-fail-under=90"
+            coverage: ""
+            advisory: true
           # Guards the minimum version claimed in hacs.json and the README.
           # Each pytest-homeassistant-custom-component release pins exactly one
           # Home Assistant version, so the minimum is selected by pinning phcc:
@@ -33,9 +43,10 @@ jobs:
             python-version: "3.13"
             phcc: "==0.13.221"
             coverage: ""
+    continue-on-error: ${{ matrix.advisory == true }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
@@ -58,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - run: pip install ruff

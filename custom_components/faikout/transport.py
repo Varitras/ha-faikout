@@ -38,6 +38,8 @@ from .const import (
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
     DISCOVERY_TOPIC,
+    MAX_DISCOVERED_HOSTS,
+    MAX_PAYLOAD_CHARS,
     effective_port,
 )
 
@@ -63,9 +65,17 @@ def collect_module(found: dict, topic: str, payload) -> None:
     if len(parts) != 2 or parts[0] != "state" or not parts[1]:
         return
     host = parts[1]
-    found.setdefault(host, None)
+    if host not in found:
+        if len(found) >= MAX_DISCOVERED_HOSTS:
+            return
+        found[host] = None
     if isinstance(payload, (bytes, bytearray)):
         payload = payload.decode(errors="replace")
+    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
+        # Same bound the state topics use. On the Home Assistant transport this
+        # runs straight on the event loop, so an oversized payload would parse
+        # there.
+        return
     try:
         data = json.loads(payload)
     except (ValueError, TypeError):

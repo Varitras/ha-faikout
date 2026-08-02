@@ -340,3 +340,55 @@ def test_build_demand_command_rounds(value, expected):
 def test_demand_bounds_match_the_device():
     """The device offers 30..100 in steps of 5; anything below 30 is refused."""
     assert (const.DEMAND_MIN, const.DEMAND_MAX, const.DEMAND_STEP) == (30, 100, 5)
+
+
+# --- protocol-dependent capabilities -----------------------------------------
+@pytest.mark.parametrize(
+    ("protocol", "expected"),
+    [("S21", 0.5), ("CN_WIRED", 1.0), ("CN-WIRED", 1.0), ("X50", 0.1), (None, 0.5)],
+)
+def test_temp_step_follows_protocol(protocol, expected):
+    assert const.temp_step_for(protocol) == expected
+
+
+def test_cn_wired_has_only_three_manual_fan_steps():
+    """The firmware leaves 2 and 4 unused on those units."""
+    modes = const.fan_modes_for("CN_WIRED")
+    assert modes == ["auto", "quiet", "1", "3", "5"]
+    assert "2" not in modes and "4" not in modes
+
+
+def test_other_protocols_keep_five_steps():
+    assert const.fan_modes_for("S21") == const.FAN_MODES
+    assert const.fan_modes_for(None) == const.FAN_MODES
+
+
+# --- hvac_action -------------------------------------------------------------
+def test_action_idle_when_compressor_is_off():
+    """At the setpoint the unit blows air but is not cooling."""
+    data = {"power": True, "mode": "C", "comp": 0}
+    assert const.hvac_action_from_state(data) == "idle"
+
+
+def test_action_cooling_when_compressor_runs():
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": 42}) == "cooling"
+
+
+def test_action_without_compressor_field_falls_back_to_mode():
+    """Older payloads have no comp; behaviour must not regress to unknown."""
+    assert const.hvac_action_from_state({"power": True, "mode": "C"}) == "cooling"
+
+
+def test_action_fan_only_ignores_compressor():
+    assert const.hvac_action_from_state({"power": True, "mode": "F", "comp": 0}) == "fan"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(True, True), (False, False), (1, True), (0, False), (None, False),
+     ("false", False), ("False", False), ("0", False), ("off", False),
+     ("true", True), ("1", True)],
+)
+def test_as_bool_handles_stringified_booleans(value, expected):
+    """bool("false") is True, which would read as permanently on."""
+    assert const.as_bool(value) is expected

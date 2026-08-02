@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 
 from homeassistant.components.sensor import (
@@ -225,7 +226,11 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         factor = getattr(self.entity_description, "factor", 1.0)
         if factor == 1.0:
             return raw
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, (int, float))
+            or not math.isfinite(raw)
+        ):
             # The device is untrusted: a string here would raise inside this
             # property on every state write.
             _LOGGER.debug(

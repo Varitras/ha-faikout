@@ -1,7 +1,7 @@
 # Faikout — Home Assistant Integration
 
 Home Assistant integration for Daikin air conditioners fitted with a
-[Faikin/Faikout](https://github.com/revk/ESP32-Faikin) module (RevK firmware), over MQTT.
+[Faikin/Faikout](https://codeberg.org/RevK/ESP32-Faikout) module (RevK firmware), over MQTT.
 
 The module publishes its state and accepts commands on MQTT. This integration subscribes to those topics
 and exposes the unit as a proper climate device, with the sensors and toggles the firmware reports.
@@ -177,7 +177,7 @@ CI runs the suite against both the current and the minimum supported Home Assist
 
 ## Credits
 
-The [ESP32-Faikin](https://github.com/revk/ESP32-Faikin) firmware and hardware are by RevK. This
+The [ESP32-Faikin](https://codeberg.org/RevK/ESP32-Faikout) firmware and hardware are by RevK. This
 integration is an independent Home Assistant client for it and is not affiliated with that project or
 with Daikin.
 

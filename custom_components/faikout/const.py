@@ -17,6 +17,8 @@ DOMAIN = "faikout"
 MAX_PAYLOAD_CHARS = 16384
 MAX_STATE_FIELDS = 256
 MAX_META_TEXT = 64
+# Discovery listens on a wildcard, so the host list is attacker-influenced too.
+MAX_DISCOVERED_HOSTS = 64
 PLATFORMS = ["climate", "number", "sensor", "switch"]
 CONF_HOST = "host"
 # Stable per-module identity (MAC when known, hostname otherwise). Everything
@@ -157,6 +159,27 @@ ACTION_FAN = "fan"
 FAN_AUTO = "auto"
 FAN_QUIET = "quiet"
 FAN_MODES = [FAN_AUTO, FAN_QUIET, "1", "2", "3", "4", "5"]
+# CN_WIRED units only have three manual steps; the firmware maps them to 1/3/5
+# and leaves 2 and 4 unused (get_fan_modes/fans_3_auto in the firmware source).
+FAN_MODES_3 = [FAN_AUTO, FAN_QUIET, "1", "3", "5"]
+
+
+def fan_modes_for(protocol) -> list[str]:
+    """Fan steps this unit actually has, from the reported protocol."""
+    if str(protocol or "").upper().replace("-", "_") == "CN_WIRED":
+        return FAN_MODES_3
+    return FAN_MODES
+
+
+# Temperature resolution differs per protocol (get_temp_step in the firmware).
+TEMP_STEP_BY_PROTOCOL = {"CN_WIRED": 1.0, "S21": 0.5, "X50": 0.1}
+
+
+def temp_step_for(protocol) -> float:
+    """Setpoint resolution for the reported protocol, S21 default."""
+    return TEMP_STEP_BY_PROTOCOL.get(
+        str(protocol or "").upper().replace("-", "_"), TEMP_STEP
+    )
 
 
 def fan_dev_to_ha(value) -> str | None:
@@ -186,8 +209,19 @@ SWING_BOTH = "both"
 SWING_MODES = [SWING_OFF, SWING_VERTICAL, SWING_HORIZONTAL, SWING_BOTH]
 
 
+def as_bool(value) -> bool:
+    """Truthiness of a device field, tolerating a stringified boolean.
+
+    bool("false") is True, so a device or bridge that sends its booleans as
+    strings would otherwise read as permanently on.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "off", "no")
+    return bool(value)
+
+
 def swing_dev_to_ha(swingv, swingh) -> str:
-    v, h = bool(swingv), bool(swingh)
+    v, h = as_bool(swingv), as_bool(swingh)
     if v and h:
         return SWING_BOTH
     if v:
@@ -293,17 +327,28 @@ def hvac_mode_from_state(data: dict) -> str | None:
 
 
 def hvac_action_from_state(data: dict) -> str:
+    """What the unit is doing right now.
+
+    The device has no dedicated action field (checked live against the running
+    firmware), so this is derived. ``comp`` is the compressor frequency: at zero
+    the unit is circulating air but neither heating nor cooling, which is
+    exactly Home Assistant's "idle". Without that check a unit sitting at its
+    setpoint would keep claiming to cool.
+    """
     if not data.get("power", False):
         return ACTION_OFF
+    mode = data.get("mode")
+    if mode == "F":
+        return ACTION_FAN
+    comp = data.get("comp")
+    if isinstance(comp, (int, float)) and not isinstance(comp, bool) and comp <= 0:
+        return ACTION_IDLE
     if data.get("heat"):
         return ACTION_HEATING
-    mode = data.get("mode")
     if mode == "C":
         return ACTION_COOLING
     if mode == "D":
         return ACTION_DRYING
-    if mode == "F":
-        return ACTION_FAN
     return ACTION_IDLE
 
 

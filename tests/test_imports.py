@@ -24,6 +24,7 @@ MODULES = [
     "custom_components.faikout.entity",
     "custom_components.faikout.config_flow",
     "custom_components.faikout.climate",
+    "custom_components.faikout.number",
     "custom_components.faikout.sensor",
     "custom_components.faikout.switch",
 ]

@@ -31,22 +31,54 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     _enable_turn_on_off_backwards_compatibility = False
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode(m) for m in const.HVAC_MODES]
-    _attr_fan_modes = const.FAN_MODES
-    _attr_swing_modes = const.SWING_MODES
     _attr_min_temp = const.TEMP_MIN
     _attr_max_temp = const.TEMP_MAX
-    _attr_target_temperature_step = const.TEMP_STEP
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE
-        | ClimateEntityFeature.FAN_MODE
-        | ClimateEntityFeature.SWING_MODE
-        | ClimateEntityFeature.TURN_ON
-        | ClimateEntityFeature.TURN_OFF
-    )
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.device_id}_climate"
+
+    # -- capabilities ---------------------------------------------------------
+    # Advertised from what this unit actually is, not from one hardware variant.
+    # Offering controls the device does not have means commands it silently
+    # discards, which looks like a broken integration to the user.
+
+    @property
+    def supported_features(self) -> ClimateEntityFeature:
+        features = (
+            ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.FAN_MODE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
+        )
+        if self._swing_axes:
+            features |= ClimateEntityFeature.SWING_MODE
+        return features
+
+    @property
+    def _swing_axes(self) -> tuple[bool, bool]:
+        """Which swing axes this unit reports, vertical and horizontal."""
+        data = self._data
+        return "swingv" in data, "swingh" in data
+
+    @property
+    def swing_modes(self) -> list[str] | None:
+        vertical, horizontal = self._swing_axes
+        if vertical and horizontal:
+            return const.SWING_MODES
+        if vertical:
+            return [const.SWING_OFF, const.SWING_VERTICAL]
+        if horizontal:
+            return [const.SWING_OFF, const.SWING_HORIZONTAL]
+        return None
+
+    @property
+    def fan_modes(self) -> list[str]:
+        return const.fan_modes_for(self._data.get("protocol"))
+
+    @property
+    def target_temperature_step(self) -> float:
+        return const.temp_step_for(self._data.get("protocol"))
 
     @property
     def hvac_mode(self) -> HVACMode | None:

@@ -5,7 +5,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import SWITCH_FIELDS, build_switch_command
+from .const import SWITCH_FIELDS, as_bool, build_switch_command
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
@@ -51,7 +51,7 @@ class FaikoutSwitch(FaikoutEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self._data.get(self._field))
+        return as_bool(self._data.get(self._field))
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.async_send_control(**build_switch_command(self._field, True))
