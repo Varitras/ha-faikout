@@ -51,7 +51,9 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
             | ClimateEntityFeature.TURN_ON
             | ClimateEntityFeature.TURN_OFF
         )
-        if self._swing_axes:
+        # any(), not the tuple itself: a two-element tuple is always truthy,
+        # so testing it directly advertised swing on units without any axis.
+        if any(self._swing_axes):
             features |= ClimateEntityFeature.SWING_MODE
         return features
 
@@ -74,7 +76,16 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
 
     @property
     def fan_modes(self) -> list[str]:
-        return const.fan_modes_for(self._data.get("protocol"))
+        modes = const.fan_modes_for(self._data.get("protocol"))
+        current = const.fan_dev_to_ha(self._data.get("fan"))
+        if current is not None and current not in modes:
+            # The step count also depends on the device's `fantype` setting,
+            # which overrides the protocol default and is not published over
+            # MQTT (checked live), so the protocol alone can give too narrow a
+            # list. Never advertise one that excludes the unit's own current
+            # value: Home Assistant would then refuse to select it again.
+            modes = [*modes, current]
+        return modes
 
     @property
     def target_temperature_step(self) -> float:
@@ -103,6 +114,10 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
 
     @property
     def swing_mode(self):
+        if not any(self._swing_axes):
+            # Otherwise the entity advertises no swing capability while still
+            # publishing a swing_mode of "off", which contradicts itself.
+            return None
         return const.swing_dev_to_ha(self._data.get("swingv"), self._data.get("swingh"))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:

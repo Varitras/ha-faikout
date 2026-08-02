@@ -129,11 +129,15 @@ Reachable later via *Configure* on the integration entry:
 
 | Platform | What |
 |---|---|
-| **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan (auto, quiet, 1–5), swing |
+| **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan speed, swing |
 | **Number** | demand — the output limit in percent, 30 to 100 in steps of 5 |
 | **Sensors** | room / outside / inlet / coil temperature, humidity, power, energy (total, heating, cooling), compressor frequency, fan speed |
 | **Diagnostics** | uptime, MQTT uptime, free memory, free SPI RAM, flash size, WiFi SSID/BSSID/channel/signal, IP address, reset reason, firmware build, protocol, last report |
 | **Switches** | powerful, economy, streamer, quiet (outdoor), comfort, sensor mode, LED, vertical/horizontal swing |
+
+The climate controls follow the unit rather than one hardware variant. Fan steps and the setpoint
+resolution come from the protocol it reports — S21 has five steps and 0.5 °C, CN_WIRED three steps and
+1 °C, X50 0.1 °C — and swing is only offered for the axes the unit actually sends, or not at all.
 
 Entities are only created for the fields your module actually reports, and appear automatically when a
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity

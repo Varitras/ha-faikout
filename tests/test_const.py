@@ -392,3 +392,59 @@ def test_action_fan_only_ignores_compressor():
 def test_as_bool_handles_stringified_booleans(value, expected):
     """bool("false") is True, which would read as permanently on."""
     assert const.as_bool(value) is expected
+
+
+# --- hvac_action: idle applies to every mode, not just cooling --------------
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        # compressor running -> actually working
+        ({"power": True, "mode": "H", "heat": True, "comp": 40}, "heating"),
+        ({"power": True, "mode": "C", "comp": 40}, "cooling"),
+        ({"power": True, "mode": "D", "comp": 40}, "drying"),
+        # compressor stopped -> idle, whatever the mode claims
+        ({"power": True, "mode": "H", "heat": True, "comp": 0}, "idle"),
+        ({"power": True, "mode": "C", "comp": 0}, "idle"),
+        ({"power": True, "mode": "D", "comp": 0}, "idle"),
+        # fan-only never involves the compressor
+        ({"power": True, "mode": "F", "comp": 0}, "fan"),
+        # no compressor reading at all -> fall back to the mode
+        ({"power": True, "mode": "C"}, "cooling"),
+        ({"power": True, "mode": "H", "heat": True}, "heating"),
+        # off wins over everything
+        ({"power": False, "mode": "H", "heat": True, "comp": 40}, "off"),
+    ],
+)
+def test_hvac_action_idle_when_compressor_is_stopped(data, expected):
+    assert const.hvac_action_from_state(data) == expected
+
+
+def test_hvac_action_ignores_a_bool_compressor_value():
+    """True would compare <= 0 as 1; a bool must not be read as a frequency."""
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": False}) == "cooling"
+
+
+# --- auto mode has no cooling flag of its own -------------------------------
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        # auto, compressor turning, not heating -> it is cooling
+        ({"power": True, "mode": "A", "comp": 35}, "cooling"),
+        # auto and heating says so itself
+        ({"power": True, "mode": "A", "heat": True, "comp": 35}, "heating"),
+        # auto, compressor stopped -> idle
+        ({"power": True, "mode": "A", "comp": 0}, "idle"),
+        # auto without a compressor reading: nothing can be inferred
+        ({"power": True, "mode": "A"}, "idle"),
+    ],
+)
+def test_hvac_action_in_auto_mode(data, expected):
+    assert const.hvac_action_from_state(data) == expected
+
+
+@pytest.mark.parametrize(
+    "reported", ["CN_WIRED", "cn-wired", "CN WIRED", " cn_wired "]
+)
+def test_protocol_name_separators_are_tolerated(reported):
+    assert const.fan_modes_for(reported) == const.FAN_MODES_3
+    assert const.temp_step_for(reported) == 1.0

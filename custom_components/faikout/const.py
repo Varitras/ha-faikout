@@ -164,9 +164,18 @@ FAN_MODES = [FAN_AUTO, FAN_QUIET, "1", "2", "3", "4", "5"]
 FAN_MODES_3 = [FAN_AUTO, FAN_QUIET, "1", "3", "5"]
 
 
+def _protocol_key(protocol) -> str:
+    """Normalise a reported protocol name for lookup.
+
+    Separator style is not guaranteed, so hyphens and spaces both fold to the
+    underscore form the tables use.
+    """
+    return str(protocol or "").strip().upper().replace("-", "_").replace(" ", "_")
+
+
 def fan_modes_for(protocol) -> list[str]:
     """Fan steps this unit actually has, from the reported protocol."""
-    if str(protocol or "").upper().replace("-", "_") == "CN_WIRED":
+    if _protocol_key(protocol) == "CN_WIRED":
         return FAN_MODES_3
     return FAN_MODES
 
@@ -177,9 +186,7 @@ TEMP_STEP_BY_PROTOCOL = {"CN_WIRED": 1.0, "S21": 0.5, "X50": 0.1}
 
 def temp_step_for(protocol) -> float:
     """Setpoint resolution for the reported protocol, S21 default."""
-    return TEMP_STEP_BY_PROTOCOL.get(
-        str(protocol or "").upper().replace("-", "_"), TEMP_STEP
-    )
+    return TEMP_STEP_BY_PROTOCOL.get(_protocol_key(protocol), TEMP_STEP)
 
 
 def fan_dev_to_ha(value) -> str | None:
@@ -341,7 +348,10 @@ def hvac_action_from_state(data: dict) -> str:
     if mode == "F":
         return ACTION_FAN
     comp = data.get("comp")
-    if isinstance(comp, (int, float)) and not isinstance(comp, bool) and comp <= 0:
+    running = None
+    if isinstance(comp, (int, float)) and not isinstance(comp, bool):
+        running = comp > 0
+    if running is False:
         return ACTION_IDLE
     if data.get("heat"):
         return ACTION_HEATING
@@ -349,6 +359,12 @@ def hvac_action_from_state(data: dict) -> str:
         return ACTION_COOLING
     if mode == "D":
         return ACTION_DRYING
+    if mode == "A" and running:
+        # Auto decides for itself, and the device has no cooling flag to match
+        # `heat`. A compressor that is confirmed to be turning while the unit
+        # is not heating is therefore cooling; without that this reported idle
+        # for the whole time an auto-mode unit was cooling.
+        return ACTION_COOLING
     return ACTION_IDLE
 
 

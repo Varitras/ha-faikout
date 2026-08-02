@@ -81,3 +81,37 @@ def test_collect_module_ignores_other_topics(topic):
     found = {}
     collect_module(found, topic, '{"id":"AABBCCDDEEFF"}')
     assert found == {}
+
+
+# --- discovery bounds -------------------------------------------------------
+def test_collect_module_stops_adding_hosts_at_the_cap():
+    """Discovery listens on a wildcard, so the host list is attacker-influenced."""
+    from custom_components.faikout.const import MAX_DISCOVERED_HOSTS
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    for i in range(MAX_DISCOVERED_HOSTS + 50):
+        collect_module(found, f"state/host{i}", "true")
+    assert len(found) == MAX_DISCOVERED_HOSTS
+
+
+def test_collect_module_still_updates_a_known_host_at_the_cap():
+    from custom_components.faikout.const import MAX_DISCOVERED_HOSTS
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    for i in range(MAX_DISCOVERED_HOSTS):
+        collect_module(found, f"state/host{i}", "true")
+    collect_module(found, "state/host0", '{"id": "AABBCCDDEEFF"}')
+    assert found["host0"] == "AABBCCDDEEFF"
+
+
+def test_collect_module_refuses_an_oversized_payload():
+    from custom_components.faikout.const import MAX_PAYLOAD_CHARS
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    huge = '{"id": "' + "x" * (MAX_PAYLOAD_CHARS + 10) + '"}'
+    collect_module(found, "state/GuestAC", huge)
+    # the host is still noted, but the payload was never parsed
+    assert found == {"GuestAC": None}

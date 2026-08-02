@@ -278,3 +278,128 @@ async def test_heartbeat_meta_does_not_drop_diagnostics(hass):
 
     # diagnostics from the earlier full status must survive
     assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
+
+
+# --- capabilities follow the actual unit ------------------------------------
+async def test_capabilities_follow_a_non_s21_protocol(hass):
+    """CN_WIRED has three fan steps and a 1 degree setpoint, not S21's five."""
+    status = {**STATUS_PAYLOAD, "protocol": "CN_WIRED", "fan": "3"}
+    await setup_integration(hass, make_transport(status=status))
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a["fan_modes"] == ["auto", "quiet", "1", "3", "5"]
+    assert a["target_temp_step"] == 1.0
+
+
+async def test_capabilities_follow_s21(hass):
+    """The same assertions for S21, so the two cannot silently converge."""
+    await setup_integration(hass, make_transport())
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a["fan_modes"] == ["auto", "quiet", "1", "2", "3", "4", "5"]
+    assert a["target_temp_step"] == 0.5
+
+
+async def test_unknown_protocol_falls_back_to_the_s21_defaults(hass):
+    status = {**STATUS_PAYLOAD, "protocol": "SOMETHING_NEW"}
+    await setup_integration(hass, make_transport(status=status))
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a["target_temp_step"] == 0.5
+    assert "1" in a["fan_modes"]
+
+
+async def test_fan_mode_is_never_missing_from_the_advertised_list(hass):
+    """`fantype` can override the protocol and is not published over MQTT.
+
+    A CN_WIRED unit set to five levels reports a step the protocol-derived
+    list does not contain; advertising that list would stop the user from
+    selecting the mode the unit is already in.
+    """
+    status = {**STATUS_PAYLOAD, "protocol": "CN_WIRED", "fan": "4"}
+    await setup_integration(hass, make_transport(status=status))
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a["fan_mode"] == "4"
+    assert a["fan_mode"] in a["fan_modes"]
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (("swingv", "swingh"), ["off", "vertical", "horizontal", "both"]),
+        (("swingv",), ["off", "vertical"]),
+        (("swingh",), ["off", "horizontal"]),
+    ],
+)
+async def test_swing_modes_follow_the_axes_the_unit_reports(hass, fields, expected):
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if not k.startswith("swing")}
+    status.update(dict.fromkeys(fields, False))
+    await setup_integration(hass, make_transport(status=status))
+
+    assert hass.states.get(CLIMATE).attributes["swing_modes"] == expected
+
+
+async def test_no_swing_axes_means_no_swing_support(hass):
+    """A unit without swing must not advertise a control it cannot obey."""
+    from homeassistant.components.climate import ClimateEntityFeature
+
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if not k.startswith("swing")}
+    await setup_integration(hass, make_transport(status=status))
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a.get("swing_modes") is None
+    assert not a["supported_features"] & ClimateEntityFeature.SWING_MODE
+
+
+async def test_setup_failure_releases_the_transport_when_cancelled(hass):
+    """A cancelled setup is not an Exception; the socket must still be closed."""
+    import asyncio
+
+    transport = make_transport()
+
+    async def _cancel(*args, **kwargs):
+        raise asyncio.CancelledError
+
+    transport.async_subscribe = _cancel
+
+    from unittest.mock import patch
+
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.faikout.const import CONF_DEVICE_ID, CONF_HOST, DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.faikout.create_transport", return_value=transport):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert transport.connected, "precondition: the connection was established"
+    assert transport.stopped, "cancelled setup left the connection open"
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+async def test_scaled_sensor_rejects_non_finite_values(hass, bad):
+    transport = make_transport(status={**STATUS_PAYLOAD, "Whheating": 1000})
+    await setup_integration(hass, transport)
+    entity_id = f"sensor.{TEST_HOST}_energy_heating"
+    assert hass.states.get(entity_id).state == "1.0"
+
+    # json.dumps spells these NaN / Infinity, which json.loads accepts back.
+    transport.feed(status_topic(TEST_HOST), json.dumps({"Whheating": bad}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state in ("unknown", "unavailable")
+
+
+async def test_no_swing_axes_reports_no_swing_mode(hass):
+    """Advertising no swing capability while publishing "off" contradicts itself."""
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if not k.startswith("swing")}
+    await setup_integration(hass, make_transport(status=status))
+
+    assert hass.states.get(CLIMATE).attributes.get("swing_mode") is None
