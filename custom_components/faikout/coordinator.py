@@ -18,7 +18,9 @@ from .const import (
     CONF_HOST,
     CONF_MAC,
     DOMAIN,
+    MAX_PAYLOAD_CHARS,
     MAX_STATE_FIELDS,
+    as_bool,
     control_topic,
     device_metadata,
     merge_state,
@@ -29,6 +31,19 @@ from .const import (
 from .transport import FaikoutTransport
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _decoded(payload) -> str | None:
+    """Decode an MQTT payload, refusing anything oversized.
+
+    The size is checked on the raw bytes first: decoding a huge payload just
+    to discard it would already have cost the event loop the work.
+    """
+    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
+        return None
+    if isinstance(payload, (bytes, bytearray)):
+        return payload.decode(errors="replace")
+    return payload
 
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
@@ -122,9 +137,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _meta_received(self, msg) -> None:
-        payload = msg.payload
-        if isinstance(payload, (bytes, bytearray)):
-            payload = payload.decode(errors="replace")
+        payload = _decoded(msg.payload)
+        if payload is None:
+            return
         was_online = self.module_online
         if payload in ("true", "false", "online", "offline"):
             self.module_online = payload in ("true", "online")
@@ -141,7 +156,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             for key, value in parsed.items():
                 if key in self.device_meta or len(self.device_meta) < MAX_STATE_FIELDS:
                     self.device_meta[key] = value
-            self.module_online = parsed.get("online", True) is not False
+            self.module_online = as_bool(parsed.get("online", True))
             self._update_device_registry()
         if self.module_online != was_online:
             # Availability, like a lost broker link, must not sit in the update
@@ -181,13 +196,21 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _message_received(self, msg) -> None:
-        payload = msg.payload
-        if isinstance(payload, (bytes, bytearray)):
-            payload = payload.decode(errors="replace")
+        payload = _decoded(msg.payload)
+        if payload is None:
+            _LOGGER.warning("Ignoring oversized state on %s", msg.topic)
+            return
         base = self._pending if self._pending is not None else self.data
         new_state = merge_state(base, payload)
         if new_state is None:
-            _LOGGER.warning("Ignoring unparseable state on %s: %r", msg.topic, payload)
+            # Truncated: the payload is untrusted and can be large, and the
+            # log is not the place to reproduce it in full.
+            _LOGGER.warning(
+                "Ignoring unparseable state on %s: %.80r%s",
+                msg.topic,
+                payload,
+                "..." if len(payload) > 80 else "",
+            )
             return
         self._pending = new_state
         # Only a real JSON state (not a bare presence "true"/"false") satisfies

@@ -408,3 +408,72 @@ async def test_tls_switch_is_stored_and_moves_the_port(hass, mock_setup_entry):
     assert result["options"][CONF_MQTT_TLS_INSECURE] is True
     # The stored port stays what the user entered; 8883 is derived on use.
     assert result["options"][CONF_MQTT_PORT] == 1883
+
+
+async def test_same_hostname_and_same_broker_is_refused(hass):
+    """After a device swap the new MAC must not get its own entry.
+
+    On one broker the hostname is the topic, so a second entry would
+    subscribe to and control exactly the same topics as the first.
+    """
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: TEST_HOST,
+            CONF_MAC: "11:11:11:11:11:11",
+            CONF_DEVICE_ID: "11:11:11:11:11:11",
+        },
+        options={CONF_USE_OWN_MQTT: True, **BROKER},
+        unique_id="11:11:11:11:11:11",
+    ).add_to_hass(hass)
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], BROKER
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+async def test_same_hostname_on_a_different_broker_is_still_allowed(hass, mock_setup_entry):
+    """The case the MAC identity exists for must keep working."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: TEST_HOST,
+            CONF_MAC: "11:11:11:11:11:11",
+            CONF_DEVICE_ID: "11:11:11:11:11:11",
+        },
+        options={CONF_USE_OWN_MQTT: True, **BROKER},
+        unique_id="11:11:11:11:11:11",
+    ).add_to_hass(hass)
+
+    other = {**BROKER, CONF_MQTT_HOST: "10.0.0.99"}
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], other
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DEVICE_ID] == "22:22:22:22:22:22"

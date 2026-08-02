@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import (
 )
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, device_metadata, normalize_mac
+from .const import DOMAIN, as_bool, device_metadata, normalize_mac
 from .coordinator import FaikoutCoordinator
 
 
@@ -46,7 +46,7 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
         return (
             super().available
             and bool(self.coordinator.data)
-            and self._data.get("online") is not False
+            and (("online" not in self._data) or as_bool(self._data["online"]))
             and self.coordinator.module_online
             and self.coordinator.transport_online
         )

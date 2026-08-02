@@ -53,8 +53,11 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         )
         # any(), not the tuple itself: a two-element tuple is always truthy,
         # so testing it directly advertised swing on units without any axis.
-        if any(self._swing_axes):
+        vertical, horizontal = self._swing_axes
+        if vertical:
             features |= ClimateEntityFeature.SWING_MODE
+        if horizontal:
+            features |= ClimateEntityFeature.SWING_HORIZONTAL_MODE
         return features
 
     @property
@@ -65,14 +68,11 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
 
     @property
     def swing_modes(self) -> list[str] | None:
-        vertical, horizontal = self._swing_axes
-        if vertical and horizontal:
-            return const.SWING_MODES
-        if vertical:
-            return [const.SWING_OFF, const.SWING_VERTICAL]
-        if horizontal:
-            return [const.SWING_OFF, const.SWING_HORIZONTAL]
-        return None
+        return const.SWING_MODES if self._swing_axes[0] else None
+
+    @property
+    def swing_horizontal_modes(self) -> list[str] | None:
+        return const.SWING_MODES if self._swing_axes[1] else None
 
     @property
     def fan_modes(self) -> list[str]:
@@ -113,12 +113,16 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         return const.fan_dev_to_ha(self._data.get("fan"))
 
     @property
-    def swing_mode(self):
-        if not any(self._swing_axes):
-            # Otherwise the entity advertises no swing capability while still
-            # publishing a swing_mode of "off", which contradicts itself.
+    def swing_mode(self) -> str | None:
+        if not self._swing_axes[0]:
             return None
-        return const.swing_dev_to_ha(self._data.get("swingv"), self._data.get("swingh"))
+        return const.swing_axis_to_ha(self._data.get("swingv"))
+
+    @property
+    def swing_horizontal_mode(self) -> str | None:
+        if not self._swing_axes[1]:
+            return None
+        return const.swing_axis_to_ha(self._data.get("swingh"))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         await self.coordinator.async_send_control(
@@ -142,4 +146,11 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         await self.coordinator.async_send_control(**const.build_fan_command(fan_mode))
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        await self.coordinator.async_send_control(**const.build_swing_command(swing_mode))
+        await self.coordinator.async_send_control(
+            **const.build_swing_command("swingv", swing_mode)
+        )
+
+    async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
+        await self.coordinator.async_send_control(
+            **const.build_swing_command("swingh", swing_horizontal_mode)
+        )

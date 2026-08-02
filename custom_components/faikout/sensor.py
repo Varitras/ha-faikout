@@ -222,9 +222,17 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         if raw is None:
             return None
         if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP:
-            return dt_util.parse_datetime(raw) if isinstance(raw, str) else raw
+            # Only a string can be parsed; anything else would reach Home
+            # Assistant as a value it cannot treat as a timestamp.
+            return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+        if isinstance(raw, (dict, list)):
+            return self._rejected(raw)
         factor = getattr(self.entity_description, "factor", 1.0)
         if factor == 1.0:
+            # Unscaled values still have to be sane: a numeric sensor given
+            # NaN or infinity ends up as a state Home Assistant cannot store.
+            if isinstance(raw, float) and not math.isfinite(raw):
+                return self._rejected(raw)
             return raw
         if (
             isinstance(raw, bool)
@@ -233,8 +241,9 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         ):
             # The device is untrusted: a string here would raise inside this
             # property on every state write.
-            _LOGGER.debug(
-                "Ignoring non-numeric %s: %r", self.entity_description.key, raw
-            )
-            return None
+            return self._rejected(raw)
         return round(raw * factor, 3)
+
+    def _rejected(self, raw):
+        _LOGGER.debug("Ignoring unusable %s: %r", self.entity_description.key, raw)
+        return

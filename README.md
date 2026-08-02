@@ -137,7 +137,8 @@ Reachable later via *Configure* on the integration entry:
 
 The climate controls follow the unit rather than one hardware variant. Fan steps and the setpoint
 resolution come from the protocol it reports — S21 has five steps and 0.5 °C, CN_WIRED three steps and
-1 °C, X50 0.1 °C — and swing is only offered for the axes the unit actually sends, or not at all.
+1 °C, X50A and Altherma_S 0.1 °C. Vertical and horizontal swing are separate controls, each offered
+only when the unit actually reports that axis.
 
 Entities are only created for the fields your module actually reports, and appear automatically when a
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
@@ -155,6 +156,11 @@ settings if you want them.
   impossible to add. So a typo produces a device that stays *Unavailable* forever, with only a warning in
   the log. If a freshly added device never becomes available, check the hostname first: it is the middle
   part of the topics, and `mosquitto_sub -h your-broker -t 'state/+' -v` shows the ones that exist.
+- **Some limits cannot be read from the device.** The temperature range and whether auto mode exists
+  are firmware settings (`t.min`, `t.max`, `no.auto`), but the module does not publish them over MQTT,
+  so the integration offers 16–32 °C and auto mode regardless. The same applies to the fan step count,
+  which the `fantype` setting can change independently of the protocol; the level the unit currently
+  reports is always selectable even when it falls outside the protocol's usual set.
 - **Faikout-Auto is not exposed** (target range, external reference, schedules). Use the module's own web
   interface for that.
 - Two modules with the same hostname on different brokers are told apart by their MAC address, which is

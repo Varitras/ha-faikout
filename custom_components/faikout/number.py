@@ -1,6 +1,8 @@
 """Number platform for Faikout: the output demand limit."""
 from __future__ import annotations
 
+import math
+
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant, callback
@@ -49,7 +51,11 @@ class FaikoutDemand(FaikoutEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         raw = self._data.get("demand")
-        return raw if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            return None
+        # NaN or infinity would be published as a state Home Assistant cannot
+        # store, and the device is untrusted.
+        return raw if math.isfinite(raw) else None
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_send_control(**build_demand_command(value))

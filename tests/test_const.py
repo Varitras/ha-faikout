@@ -93,24 +93,6 @@ def test_fan_ha_to_dev(ha, dev):
     assert isinstance(result, str)
 
 
-@pytest.mark.parametrize("v,h,expected", [
-    (False, False, "off"), (True, False, "vertical"),
-    (False, True, "horizontal"), (True, True, "both"), (None, None, "off"),
-])
-def test_swing_dev_to_ha(v, h, expected):
-    assert const.swing_dev_to_ha(v, h) == expected
-
-
-@pytest.mark.parametrize("mode,expected", [
-    ("off", {"swingv": False, "swingh": False}),
-    ("vertical", {"swingv": True, "swingh": False}),
-    ("horizontal", {"swingv": False, "swingh": True}),
-    ("both", {"swingv": True, "swingh": True}),
-])
-def test_swing_ha_to_dev(mode, expected):
-    assert const.swing_ha_to_dev(mode) == expected
-
-
 # --- state readers ---
 def test_hvac_mode_from_state_off_when_power_false():
     assert const.hvac_mode_from_state({"power": False, "mode": "C"}) == "off"
@@ -157,8 +139,26 @@ def test_build_fan_command_auto():
     assert const.build_fan_command("auto") == {"fan": "A"}
 
 
-def test_build_swing_command_both():
-    assert const.build_swing_command("both") == {"swingv": True, "swingh": True}
+# Home Assistant drives the two axes separately, so each command names one.
+@pytest.mark.parametrize(
+    ("field", "mode", "expected"),
+    [
+        ("swingv", "on", {"swingv": True}),
+        ("swingv", "off", {"swingv": False}),
+        ("swingh", "on", {"swingh": True}),
+        ("swingh", "off", {"swingh": False}),
+    ],
+)
+def test_build_swing_command_sets_one_axis(field, mode, expected):
+    assert const.build_swing_command(field, mode) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(True, "on"), (False, "off"), ("true", "on"), ("false", "off"), (None, "off")],
+)
+def test_swing_axis_to_ha(value, expected):
+    assert const.swing_axis_to_ha(value) == expected
 
 
 def test_build_switch_command():
@@ -345,7 +345,17 @@ def test_demand_bounds_match_the_device():
 # --- protocol-dependent capabilities -----------------------------------------
 @pytest.mark.parametrize(
     ("protocol", "expected"),
-    [("S21", 0.5), ("CN_WIRED", 1.0), ("CN-WIRED", 1.0), ("X50", 0.1), (None, 0.5)],
+    [
+        # The firmware's own spellings: prototype[] = S21, X50A, CN_WIRED,
+        # Altherma_S. "X50" is not one of them.
+        ("S21", 0.5),
+        ("CN_WIRED", 1.0),
+        ("CN-WIRED", 1.0),
+        ("X50A", 0.1),
+        ("Altherma_S", 0.1),
+        (None, 0.5),
+        ("something else", 0.5),
+    ],
 )
 def test_temp_step_follows_protocol(protocol, expected):
     assert const.temp_step_for(protocol) == expected
@@ -448,3 +458,54 @@ def test_hvac_action_in_auto_mode(data, expected):
 def test_protocol_name_separators_are_tolerated(reported):
     assert const.fan_modes_for(reported) == const.FAN_MODES_3
     assert const.temp_step_for(reported) == 1.0
+
+
+# --- protocol names as the firmware really publishes them -------------------
+@pytest.mark.parametrize(
+    ("reported", "step"),
+    [
+        # An inverted line appends a marker to the name.
+        ("S21\u00acTx", 0.5),
+        ("S21\u00acTx\u00acRx", 0.5),
+        ("CN_WIRED\u00acTx", 1.0),
+        ("X50A\u00acRx", 0.1),
+    ],
+)
+def test_inversion_suffix_does_not_hide_the_protocol(reported, step):
+    assert const.temp_step_for(reported) == step
+
+
+def test_inverted_cn_wired_still_gets_three_fan_steps():
+    assert const.fan_modes_for("CN_WIRED\u00acTx") == const.FAN_MODES_3
+
+
+def test_loopback_falls_back_instead_of_guessing():
+    """The firmware reports "loopback" instead of a protocol while looped."""
+    assert const.temp_step_for("loopback") == const.TEMP_STEP
+
+
+# --- anti-freeze ------------------------------------------------------------
+def test_antifreeze_reports_defrosting():
+    data = {"power": True, "mode": "H", "heat": True, "comp": 40, "antifreeze": True}
+    assert const.hvac_action_from_state(data) == "defrosting"
+
+
+def test_antifreeze_off_does_not_hide_the_real_action():
+    data = {"power": True, "mode": "C", "comp": 40, "antifreeze": False}
+    assert const.hvac_action_from_state(data) == "cooling"
+
+
+def test_antifreeze_absent_is_not_defrosting():
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": 40}) == "cooling"
+
+
+# --- stringified booleans everywhere ----------------------------------------
+@pytest.mark.parametrize("off", [False, "false", "False", "0", "off", ""])
+def test_power_off_as_a_string_is_still_off(off):
+    assert const.hvac_action_from_state({"power": off, "mode": "C"}) == "off"
+    assert const.hvac_mode_from_state({"power": off, "mode": "C"}) == "off"
+
+
+def test_heat_as_a_string_still_means_heating():
+    data = {"power": "true", "mode": "H", "heat": "true", "comp": 40}
+    assert const.hvac_action_from_state(data) == "heating"

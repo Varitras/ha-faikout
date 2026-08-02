@@ -150,6 +150,7 @@ ACTION_COOLING = "cooling"
 ACTION_DRYING = "drying"
 ACTION_IDLE = "idle"
 ACTION_FAN = "fan"
+ACTION_DEFROSTING = "defrosting"
 
 # --- Fan --------------------------------------------------------------------
 # Fan levels: auto ("A"), a quiet/night step ("Q"), and manual 1-5. The device
@@ -167,10 +168,13 @@ FAN_MODES_3 = [FAN_AUTO, FAN_QUIET, "1", "3", "5"]
 def _protocol_key(protocol) -> str:
     """Normalise a reported protocol name for lookup.
 
-    Separator style is not guaranteed, so hyphens and spaces both fold to the
-    underscore form the tables use.
+    The firmware publishes the bare name plus an inversion marker when the
+    line is inverted, e.g. "CN_WIRED¬Tx" or "S21¬Tx¬Rx", so
+    everything from the marker on is dropped. Separator style is not
+    guaranteed either, so hyphens and spaces fold to the underscore form.
     """
-    return str(protocol or "").strip().upper().replace("-", "_").replace(" ", "_")
+    name = str(protocol or "").split("¬")[0]
+    return name.strip().upper().replace("-", "_").replace(" ", "_")
 
 
 def fan_modes_for(protocol) -> list[str]:
@@ -180,8 +184,15 @@ def fan_modes_for(protocol) -> list[str]:
     return FAN_MODES
 
 
-# Temperature resolution differs per protocol (get_temp_step in the firmware).
-TEMP_STEP_BY_PROTOCOL = {"CN_WIRED": 1.0, "S21": 0.5, "X50": 0.1}
+# Temperature resolution per protocol (get_temp_step in the firmware). The
+# names are the firmware's own spellings: prototype[] = { "S21", "X50A",
+# "CN_WIRED", "Altherma_S" } - note X50A, not X50.
+TEMP_STEP_BY_PROTOCOL = {
+    "CN_WIRED": 1.0,
+    "S21": 0.5,
+    "X50A": 0.1,
+    "ALTHERMA_S": 0.1,
+}
 
 
 def temp_step_for(protocol) -> float:
@@ -209,13 +220,6 @@ def fan_ha_to_dev(mode: str) -> str:
 
 
 # --- Swing ------------------------------------------------------------------
-SWING_OFF = "off"
-SWING_VERTICAL = "vertical"
-SWING_HORIZONTAL = "horizontal"
-SWING_BOTH = "both"
-SWING_MODES = [SWING_OFF, SWING_VERTICAL, SWING_HORIZONTAL, SWING_BOTH]
-
-
 def as_bool(value) -> bool:
     """Truthiness of a device field, tolerating a stringified boolean.
 
@@ -227,22 +231,16 @@ def as_bool(value) -> bool:
     return bool(value)
 
 
-def swing_dev_to_ha(swingv, swingh) -> str:
-    v, h = as_bool(swingv), as_bool(swingh)
-    if v and h:
-        return SWING_BOTH
-    if v:
-        return SWING_VERTICAL
-    if h:
-        return SWING_HORIZONTAL
-    return SWING_OFF
+SWING_OFF = "off"
+SWING_ON = "on"
+# Home Assistant models the two axes separately: SWING_MODE is the vertical
+# one, SWING_HORIZONTAL_MODE the horizontal one, each simply on or off. The
+# device has a boolean per axis, so the two line up directly.
+SWING_MODES = [SWING_OFF, SWING_ON]
 
 
-def swing_ha_to_dev(mode: str) -> dict:
-    return {
-        "swingv": mode in (SWING_VERTICAL, SWING_BOTH),
-        "swingh": mode in (SWING_HORIZONTAL, SWING_BOTH),
-    }
+def swing_axis_to_ha(value) -> str:
+    return SWING_ON if as_bool(value) else SWING_OFF
 
 
 # --- Demand -----------------------------------------------------------------
@@ -327,7 +325,7 @@ def parse_device_meta(payload) -> dict | None:
 
 # --- State readers ----------------------------------------------------------
 def hvac_mode_from_state(data: dict) -> str | None:
-    if not data.get("power", False):
+    if not as_bool(data.get("power", False)):
         return HVAC_OFF
     mode = data.get("mode")
     return MODE_DEV_TO_HA.get(mode) if isinstance(mode, str) else None
@@ -342,8 +340,12 @@ def hvac_action_from_state(data: dict) -> str:
     exactly Home Assistant's "idle". Without that check a unit sitting at its
     setpoint would keep claiming to cool.
     """
-    if not data.get("power", False):
+    if not as_bool(data.get("power", False)):
         return ACTION_OFF
+    if as_bool(data.get("antifreeze")):
+        # The firmware makes the same call: anti-freeze suspends cooling and
+        # is reported as defrosting rather than as whatever the mode says.
+        return ACTION_DEFROSTING
     mode = data.get("mode")
     if mode == "F":
         return ACTION_FAN
@@ -353,7 +355,7 @@ def hvac_action_from_state(data: dict) -> str:
         running = comp > 0
     if running is False:
         return ACTION_IDLE
-    if data.get("heat"):
+    if as_bool(data.get("heat")):
         return ACTION_HEATING
     if mode == "C":
         return ACTION_COOLING
@@ -383,8 +385,9 @@ def build_fan_command(ha_fan: str) -> dict:
     return {"fan": fan_ha_to_dev(ha_fan)}
 
 
-def build_swing_command(ha_swing: str) -> dict:
-    return swing_ha_to_dev(ha_swing)
+def build_swing_command(field: str, mode: str) -> dict:
+    """Set one swing axis; `field` is "swingv" or "swingh"."""
+    return {field: mode == SWING_ON}
 
 
 def build_switch_command(field: str, on: bool) -> dict:

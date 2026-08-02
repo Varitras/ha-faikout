@@ -46,6 +46,7 @@ async def test_climate_state_from_status(hass):
     assert state.attributes["temperature"] == 21.5
     assert state.attributes["fan_mode"] == "auto"
     assert state.attributes["swing_mode"] == "off"
+    assert state.attributes["swing_horizontal_mode"] == "off"
     assert state.attributes["hvac_action"] == "heating"
 
 
@@ -73,7 +74,8 @@ async def test_climate_updates_on_new_message(hass):
         ("set_hvac_mode", {"hvac_mode": "off"}, {"power": False}),
         ("set_fan_mode", {"fan_mode": "3"}, {"fan": "3"}),
         ("set_fan_mode", {"fan_mode": "auto"}, {"fan": "A"}),
-        ("set_swing_mode", {"swing_mode": "both"}, {"swingv": True, "swingh": True}),
+        ("set_swing_mode", {"swing_mode": "on"}, {"swingv": True}),
+        ("set_swing_horizontal_mode", {"swing_horizontal_mode": "on"}, {"swingh": True}),
         ("turn_off", {}, {"power": False}),
         ("turn_on", {}, {"power": True}),
     ],
@@ -325,19 +327,21 @@ async def test_fan_mode_is_never_missing_from_the_advertised_list(hass):
 
 
 @pytest.mark.parametrize(
-    ("fields", "expected"),
+    ("fields", "vertical", "horizontal"),
     [
-        (("swingv", "swingh"), ["off", "vertical", "horizontal", "both"]),
-        (("swingv",), ["off", "vertical"]),
-        (("swingh",), ["off", "horizontal"]),
+        (("swingv", "swingh"), True, True),
+        (("swingv",), True, False),
+        (("swingh",), False, True),
     ],
 )
-async def test_swing_modes_follow_the_axes_the_unit_reports(hass, fields, expected):
+async def test_swing_axes_are_advertised_separately(hass, fields, vertical, horizontal):
     status = {k: v for k, v in STATUS_PAYLOAD.items() if not k.startswith("swing")}
     status.update(dict.fromkeys(fields, False))
     await setup_integration(hass, make_transport(status=status))
 
-    assert hass.states.get(CLIMATE).attributes["swing_modes"] == expected
+    a = hass.states.get(CLIMATE).attributes
+    assert (a.get("swing_modes") == ["off", "on"]) is vertical
+    assert (a.get("swing_horizontal_modes") == ["off", "on"]) is horizontal
 
 
 async def test_no_swing_axes_means_no_swing_support(hass):
@@ -349,7 +353,9 @@ async def test_no_swing_axes_means_no_swing_support(hass):
 
     a = hass.states.get(CLIMATE).attributes
     assert a.get("swing_modes") is None
+    assert a.get("swing_horizontal_modes") is None
     assert not a["supported_features"] & ClimateEntityFeature.SWING_MODE
+    assert not a["supported_features"] & ClimateEntityFeature.SWING_HORIZONTAL_MODE
 
 
 async def test_setup_failure_releases_the_transport_when_cancelled(hass):
@@ -402,4 +408,73 @@ async def test_no_swing_axes_reports_no_swing_mode(hass):
     status = {k: v for k, v in STATUS_PAYLOAD.items() if not k.startswith("swing")}
     await setup_integration(hass, make_transport(status=status))
 
-    assert hass.states.get(CLIMATE).attributes.get("swing_mode") is None
+    a = hass.states.get(CLIMATE).attributes
+    assert a.get("swing_mode") is None
+    assert a.get("swing_horizontal_mode") is None
+
+
+# --- untrusted values must not reach Home Assistant -------------------------
+@pytest.mark.parametrize("bad", [{"a": 1}, [1, 2], float("nan"), float("inf")])
+async def test_unscaled_sensor_rejects_unusable_values(hass, bad):
+    """Only the scaled energy counters used to be validated."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    entity_id = f"sensor.{TEST_HOST}_compressor"
+    assert hass.states.get(entity_id).state == "42"
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"comp": bad}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state in ("unknown", "unavailable")
+
+
+async def test_timestamp_sensor_rejects_a_non_string(hass):
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(state_topic(TEST_HOST), json.dumps({"ts": 1234567890}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"sensor.{TEST_HOST}_last_report").state in (
+        "unknown",
+        "unavailable",
+    )
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), "80", True])
+async def test_demand_number_rejects_unusable_values(hass, bad):
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    entity_id = f"number.{TEST_HOST}_demand"
+    assert hass.states.get(entity_id).state == "100"
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"demand": bad}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).state in ("unknown", "unavailable")
+
+
+async def test_oversized_payload_is_dropped_before_decoding(hass):
+    from custom_components.faikout.const import MAX_PAYLOAD_CHARS
+
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+
+    huge = ('{"temp": 30, "pad": "' + "x" * MAX_PAYLOAD_CHARS + '"}').encode()
+    transport.feed(status_topic(TEST_HOST), huge)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+
+
+async def test_string_false_online_marks_the_device_unavailable(hass):
+    """A bridge that stringifies booleans must not read as permanently on."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"online": "false"}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE

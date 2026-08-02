@@ -114,9 +114,13 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
         A module discovered with its MAC and the same module added by hand (no
         MAC, so identified by hostname) produce different unique ids, so the
-        unique-id check alone would happily add it twice. Two entries sharing a
-        hostname are only legitimate when BOTH carry a MAC and the MACs differ —
-        that is the genuine "same name on two brokers" case.
+        unique-id check alone would happily add it twice.
+
+        Two entries may share a hostname only when both carry a MAC, the MACs
+        differ, AND they sit on different brokers — that is the genuine "same
+        name on two brokers" case. On one broker the hostname is the topic, so
+        a second entry would subscribe to and control the very same topics as
+        the first, which is what happens after a device is swapped out.
         """
         new_mac = normalize_mac(mac)
         for entry in self._async_current_entries():
@@ -125,7 +129,22 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             existing_mac = normalize_mac(entry.data.get(CONF_MAC))
             if existing_mac is None or new_mac is None:
                 return True
+            if self._same_broker(entry):
+                return True
         return False
+
+    def _broker_id(self, options) -> tuple:
+        """What identifies the broker an entry talks to."""
+        if not options.get(CONF_USE_OWN_MQTT):
+            return ("ha",)  # Home Assistant's own MQTT client, only one of those
+        return (
+            str(options.get(CONF_MQTT_HOST, "")).strip().lower(),
+            int(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
+        )
+
+    def _same_broker(self, entry) -> bool:
+        pending = {CONF_USE_OWN_MQTT: bool(self._broker), **self._broker}
+        return self._broker_id(entry.options) == self._broker_id(pending)
 
     @staticmethod
     def _entry_data(host: str, mac) -> dict:
