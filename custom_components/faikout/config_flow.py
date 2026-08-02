@@ -134,9 +134,15 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         return False
 
     def _broker_id(self, options) -> tuple:
-        """What identifies the broker an entry talks to."""
+        """The broker endpoint an entry actually talks to.
+
+        Home Assistant's own MQTT client is resolved to its configured host
+        and port rather than treated as a category of its own: an entry using
+        it and an entry pointing straight at the same machine are on the same
+        broker, and would otherwise both be allowed to drive the same topics.
+        """
         if not options.get(CONF_USE_OWN_MQTT):
-            return ("ha",)  # Home Assistant's own MQTT client, only one of those
+            return self._ha_broker_id()
         tls = bool(options.get(CONF_MQTT_TLS))
         return (
             str(options.get(CONF_MQTT_HOST, "")).strip().lower(),
@@ -146,6 +152,16 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             effective_port(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT), tls),
             tls,
         )
+
+    def _ha_broker_id(self) -> tuple:
+        """Where Home Assistant's own MQTT integration is pointed."""
+        for entry in self.hass.config_entries.async_entries("mqtt"):
+            host = str(entry.data.get("broker", "")).strip().lower()
+            if host:
+                return (host, int(entry.data.get("port", DEFAULT_MQTT_PORT)), False)
+        # Not configured, or it does not say: fall back to a marker so two
+        # entries using it still match each other.
+        return ("ha",)
 
     def _same_broker(self, entry) -> bool:
         pending = {CONF_USE_OWN_MQTT: bool(self._broker), **self._broker}

@@ -159,9 +159,9 @@ settings if you want them.
 - **The device's auto mode is `heat_cool`, not `auto`.** Home Assistant reserves `auto` for a schedule
   or learned behaviour that also takes the temperature control away from the user, which is not what
   this mode does. The firmware's own discovery publishes `heat_cool` as well.
-- **Some limits cannot be read from the device.** The temperature range and whether auto mode exists
-  are firmware settings (`t.min`, `t.max`, `no.auto`), but the module does not publish them over MQTT,
-  so the integration offers 16–32 °C and auto mode regardless. The same applies to the fan step count,
+- **Some limits cannot be read from the device.** The temperature range and whether the device's own
+  auto mode exists are firmware settings (`t.min`, `t.max`, `no.auto`), but the module does not publish
+  them over MQTT, so the integration offers 16–32 °C and `heat_cool` regardless. The same applies to the fan step count,
   which the `fantype` setting can change independently of the protocol; the level the unit currently
   reports is always selectable even when it falls outside the protocol's usual set.
 - **Faikout-Auto is not exposed** (target range, external reference, schedules). Use the module's own web

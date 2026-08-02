@@ -392,13 +392,12 @@ def hvac_action_from_state(data: dict) -> str:
         return ACTION_COOLING
     if mode == "D":
         return ACTION_DRYING
-    if mode == "A" and running and "heat" in data:
-        # Auto decides for itself and there is no cooling flag to match `heat`,
-        # so cooling is inferred: the compressor is confirmed to be turning and
-        # the device says it is not heating. Only when it does say so - without
-        # the flag the direction is unknown and idle is reported rather than
-        # asserting the wrong one.
-        return ACTION_COOLING
+    # In heat_cool the direction is not knowable. `heat` cannot answer it: on
+    # S21 the firmware derives it as `mode == HEAT` and says so itself
+    # ("Crude - TODO find if anything actually tells us this"), so it is false
+    # in heat_cool even while the unit heats. Idle understates a running unit,
+    # but it is what the firmware's own fallback reports, and it beats naming
+    # the wrong direction.
     return ACTION_IDLE
 
 

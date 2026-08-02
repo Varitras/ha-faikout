@@ -477,3 +477,45 @@ async def test_same_hostname_on_a_different_broker_is_still_allowed(hass, mock_s
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_DEVICE_ID] == "22:22:22:22:22:22"
+
+
+async def test_own_client_pointing_at_home_assistants_broker_is_the_same_broker(hass):
+    """Both routes can reach one broker; a device swap must not yield two entries."""
+    from homeassistant.config_entries import ConfigEntryState
+
+    # Marked loaded so Home Assistant does not try to set up a real broker
+    # connection; only its stored address matters here.
+    MockConfigEntry(
+        domain="mqtt",
+        data={"broker": "10.0.0.5", "port": 1883},
+        state=ConfigEntryState.LOADED,
+    ).add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: TEST_HOST,
+            CONF_MAC: "11:11:11:11:11:11",
+            CONF_DEVICE_ID: "11:11:11:11:11:11",
+        },
+        options={},  # uses Home Assistant's MQTT integration
+        unique_id="11:11:11:11:11:11",
+    ).add_to_hass(hass)
+
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "own_mqtt"}
+    )
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+    ):
+        # BROKER points at 10.0.0.5:1883 - the very broker Home Assistant uses
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], BROKER
+        )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: TEST_HOST}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

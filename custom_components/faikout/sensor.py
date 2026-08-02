@@ -227,8 +227,15 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
             if not isinstance(raw, str):
                 return None
             parsed = dt_util.parse_datetime(raw)
-            # Home Assistant refuses a naive datetime for a timestamp sensor.
-            return dt_util.as_utc(parsed) if parsed is not None else None
+            if parsed is None:
+                return None
+            try:
+                # Home Assistant refuses a naive datetime for a timestamp
+                # sensor. Converting can still overflow: a value near the end
+                # of the representable range plus an offset falls outside it.
+                return dt_util.as_utc(parsed)
+            except (OverflowError, ValueError, OSError):
+                return self._rejected(raw)
         if self._numeric:
             # A numeric sensor has to get a number: Home Assistant rejects a
             # string or a boolean where it expects one, on every state write.

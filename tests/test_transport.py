@@ -115,3 +115,40 @@ def test_collect_module_refuses_an_oversized_payload():
     collect_module(found, "state/GuestAC", huge)
     # the host is still noted, but the payload was never parsed
     assert found == {"GuestAC": None}
+
+
+def test_collect_module_refuses_oversized_bytes_too():
+    """The bound applies to raw bytes, not only to an already decoded string.
+
+    The host itself comes from the topic and is still noted; it is the payload
+    that is refused, so no MAC is taken from it.
+    """
+    from custom_components.faikout.const import MAX_PAYLOAD_CHARS
+    from custom_components.faikout.transport import collect_module
+
+    found = {}
+    huge = b'{"id": "AABBCCDDEEFF", "pad": "' + b"x" * MAX_PAYLOAD_CHARS + b'"}'
+    collect_module(found, "state/GuestAC", huge)
+    assert found == {"GuestAC": None}
+
+
+def test_own_transport_drops_oversized_payloads_off_the_event_loop():
+    """The payload is discarded on paho's thread, never handed to the loop."""
+    from unittest.mock import MagicMock, patch
+
+    from custom_components.faikout.const import MAX_PAYLOAD_CHARS
+    from custom_components.faikout.transport import OwnMqttTransport
+
+    hass = MagicMock()
+    with patch("paho.mqtt.client.Client"):
+        transport = OwnMqttTransport(hass, "broker.invalid", 1883, None, None)
+    seen = []
+    transport._subs["state/x"] = seen.append
+
+    msg = type("M", (), {"topic": "state/x", "payload": b"y" * (MAX_PAYLOAD_CHARS + 1)})()
+    transport._on_message(None, None, msg)
+    assert not hass.loop.call_soon_threadsafe.called
+
+    small = type("M", (), {"topic": "state/x", "payload": b"true"})()
+    transport._on_message(None, None, small)
+    assert hass.loop.call_soon_threadsafe.called

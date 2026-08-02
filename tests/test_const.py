@@ -441,8 +441,8 @@ def test_hvac_action_ignores_a_bool_compressor_value():
 @pytest.mark.parametrize(
     ("data", "expected"),
     [
-        # auto, compressor turning, device says not heating -> it is cooling
-        ({"power": True, "mode": "A", "comp": 35, "heat": False}, "cooling"),
+        # heat_cool: the direction cannot be known, so do not name one
+        ({"power": True, "mode": "A", "comp": 35, "heat": False}, "idle"),
         # auto and heating says so itself
         ({"power": True, "mode": "A", "heat": True, "comp": 35}, "heating"),
         # auto, compressor stopped -> idle
@@ -538,12 +538,14 @@ def test_as_number(raw, expected):
         assert type(const.as_number(raw)) is type(expected)
 
 
-def test_auto_cooling_is_only_inferred_when_the_device_says_it_is_not_heating():
-    """Without the heat flag the direction is unknown; do not assert one."""
-    with_flag = {"power": True, "mode": "A", "comp": 35, "heat": False}
-    without = {"power": True, "mode": "A", "comp": 35}
-    assert const.hvac_action_from_state(with_flag) == "cooling"
-    assert const.hvac_action_from_state(without) == "idle"
+def test_heat_cool_never_claims_a_direction():
+    """On S21 the firmware derives `heat` from the mode, so it cannot answer
+    which way a heat_cool unit is working. Reporting idle understates it;
+    naming the wrong direction would be worse."""
+    running = {"power": True, "mode": "A", "comp": 35, "heat": False}
+    without_flag = {"power": True, "mode": "A", "comp": 35}
+    assert const.hvac_action_from_state(running) == "idle"
+    assert const.hvac_action_from_state(without_flag) == "idle"
 
 
 def test_device_auto_is_heat_cool_not_auto():

@@ -517,3 +517,28 @@ async def test_demand_below_the_device_minimum_is_not_reported(hass):
         "unknown",
         "unavailable",
     )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "9999-12-31T23:59:59-23:59",   # parses, then overflows on conversion
+        "0001-01-01T00:00:00+23:59",
+        "not a timestamp",
+        "",
+    ],
+)
+async def test_timestamp_sensor_survives_extreme_values(hass, raw):
+    """A crafted value must not break the entity update over and over."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(state_topic(TEST_HOST), json.dumps({"ts": raw}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"sensor.{TEST_HOST}_last_report").state in (
+        "unknown",
+        "unavailable",
+    )
+    # the rest of the entity keeps working
+    assert hass.states.get(CLIMATE).state == "heat"
