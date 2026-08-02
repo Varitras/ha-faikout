@@ -226,13 +226,16 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
             # Assistant as a value it cannot treat as a timestamp.
             if not isinstance(raw, str):
                 return None
-            parsed = dt_util.parse_datetime(raw)
-            if parsed is None:
-                return None
             try:
-                # Home Assistant refuses a naive datetime for a timestamp
-                # sensor. Converting can still overflow: a value near the end
-                # of the representable range plus an offset falls outside it.
+                # Parsing is inside the guard as well: a string that matches
+                # the ISO shape but names an impossible date ("2026-02-30")
+                # gets as far as datetime() and raises there. Converting can
+                # then still overflow — Home Assistant refuses a naive
+                # datetime, and a value near the end of the representable
+                # range plus an offset falls outside it.
+                parsed = dt_util.parse_datetime(raw)
+                if parsed is None:
+                    return None
                 return dt_util.as_utc(parsed)
             except (OverflowError, ValueError, OSError):
                 return self._rejected(raw)

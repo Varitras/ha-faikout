@@ -362,8 +362,8 @@ def hvac_mode_from_state(data: dict) -> str | None:
     return MODE_DEV_TO_HA.get(mode) if isinstance(mode, str) else None
 
 
-def hvac_action_from_state(data: dict) -> str:
-    """What the unit is doing right now.
+def hvac_action_from_state(data: dict) -> str | None:
+    """What the unit is doing right now, or ``None`` when that is not knowable.
 
     The device has no dedicated action field (checked live against the running
     firmware), so this is derived. ``comp`` is the compressor frequency: at zero
@@ -395,10 +395,10 @@ def hvac_action_from_state(data: dict) -> str:
     # In heat_cool the direction is not knowable. `heat` cannot answer it: on
     # S21 the firmware derives it as `mode == HEAT` and says so itself
     # ("Crude - TODO find if anything actually tells us this"), so it is false
-    # in heat_cool even while the unit heats. Idle understates a running unit,
-    # but it is what the firmware's own fallback reports, and it beats naming
-    # the wrong direction.
-    return ACTION_IDLE
+    # in heat_cool even while the unit heats. Reporting idle here would claim
+    # the unit is doing nothing while the compressor runs, so say nothing:
+    # Home Assistant renders an absent action as unknown, which is the truth.
+    return None
 
 
 # --- Command builders -------------------------------------------------------

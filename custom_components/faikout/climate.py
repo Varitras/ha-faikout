@@ -98,8 +98,9 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         return HVACMode(mode) if mode is not None else None
 
     @property
-    def hvac_action(self) -> HVACAction:
-        return HVACAction(const.hvac_action_from_state(self._data))
+    def hvac_action(self) -> HVACAction | None:
+        action = const.hvac_action_from_state(self._data)
+        return HVACAction(action) if action is not None else None
 
     @property
     def current_temperature(self) -> float | None:

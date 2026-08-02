@@ -479,6 +479,36 @@ async def test_same_hostname_on_a_different_broker_is_still_allowed(hass, mock_s
     assert result["data"][CONF_DEVICE_ID] == "22:22:22:22:22:22"
 
 
+async def test_home_assistant_broker_id_carries_its_tls_setting(hass):
+    """A TLS broker reached both ways is still one broker.
+
+    Home Assistant stores its TLS choice as the CA it validates against, not
+    as a flag. Ignoring that made an encrypted HA connection compare unequal
+    to an own-client one pointing at the same endpoint.
+    """
+    from homeassistant.config_entries import ConfigEntryState
+
+    from custom_components.faikout.config_flow import FaikoutConfigFlow
+
+    MockConfigEntry(
+        domain="mqtt",
+        data={"broker": "10.0.0.5", "port": 8883, "certificate": "auto"},
+        state=ConfigEntryState.LOADED,
+    ).add_to_hass(hass)
+
+    flow = FaikoutConfigFlow()
+    flow.hass = hass
+    assert flow._ha_broker_id() == ("10.0.0.5", 8883, True)
+    assert flow._broker_id(
+        {
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 8883,
+            CONF_MQTT_TLS: True,
+        }
+    ) == flow._ha_broker_id()
+
+
 async def test_own_client_pointing_at_home_assistants_broker_is_the_same_broker(hass):
     """Both routes can reach one broker; a device swap must not yield two entries."""
     from homeassistant.config_entries import ConfigEntryState

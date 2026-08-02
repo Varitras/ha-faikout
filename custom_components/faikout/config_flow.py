@@ -158,7 +158,13 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         for entry in self.hass.config_entries.async_entries("mqtt"):
             host = str(entry.data.get("broker", "")).strip().lower()
             if host:
-                return (host, int(entry.data.get("port", DEFAULT_MQTT_PORT)), False)
+                # Home Assistant records TLS as the CA it validates against,
+                # so the presence of "certificate" is what makes its
+                # connection encrypted. Without reading it, HA-over-TLS and
+                # own-MQTT-over-TLS to the same broker look like two
+                # different endpoints and both get to drive the same topics.
+                tls = bool(entry.data.get("certificate"))
+                return (host, int(entry.data.get("port", DEFAULT_MQTT_PORT)), tls)
         # Not configured, or it does not say: fall back to a marker so two
         # entries using it still match each other.
         return ("ha",)

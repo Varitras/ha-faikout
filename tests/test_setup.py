@@ -50,6 +50,27 @@ async def test_climate_state_from_status(hass):
     assert state.attributes["hvac_action"] == "heating"
 
 
+async def test_climate_reports_no_action_when_the_direction_is_unknowable(hass):
+    """heat_cool with the compressor running: the entity must not name a state.
+
+    Home Assistant leaves the attribute out entirely for an absent action and
+    shows it as unknown, which is what an undecidable direction is. Claiming
+    idle would contradict the compressor reading right next to it.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(
+        status_topic(TEST_HOST),
+        json.dumps({"power": True, "mode": "A", "heat": False, "comp": 35}),
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get(CLIMATE)
+    assert state.state == "heat_cool"
+    assert "hvac_action" not in state.attributes
+
+
 async def test_climate_updates_on_new_message(hass):
     transport = make_transport()
     await setup_integration(hass, transport)
@@ -524,6 +545,8 @@ async def test_demand_below_the_device_minimum_is_not_reported(hass):
     [
         "9999-12-31T23:59:59-23:59",   # parses, then overflows on conversion
         "0001-01-01T00:00:00+23:59",
+        "2026-02-30T12:00:00Z",        # right shape, impossible day: raises in the parser
+        "2026-13-01T12:00:00Z",
         "not a timestamp",
         "",
     ],

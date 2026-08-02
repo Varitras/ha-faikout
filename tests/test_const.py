@@ -115,7 +115,7 @@ def test_hvac_mode_from_state_unknown_mode_is_none():
     ({"power": True, "mode": "C"}, "cooling"),
     ({"power": True, "mode": "D"}, "drying"),
     ({"power": True, "mode": "F"}, "fan"),
-    ({"power": True, "mode": "A"}, "idle"),
+    ({"power": True, "mode": "A"}, None),
 ])
 def test_hvac_action_from_state(data, expected):
     assert const.hvac_action_from_state(data) == expected
@@ -442,13 +442,13 @@ def test_hvac_action_ignores_a_bool_compressor_value():
     ("data", "expected"),
     [
         # heat_cool: the direction cannot be known, so do not name one
-        ({"power": True, "mode": "A", "comp": 35, "heat": False}, "idle"),
+        ({"power": True, "mode": "A", "comp": 35, "heat": False}, None),
         # auto and heating says so itself
         ({"power": True, "mode": "A", "heat": True, "comp": 35}, "heating"),
-        # auto, compressor stopped -> idle
+        # auto, compressor stopped -> idle, which needs no direction
         ({"power": True, "mode": "A", "comp": 0}, "idle"),
         # auto without a compressor reading: nothing can be inferred
-        ({"power": True, "mode": "A", "heat": False}, "idle"),
+        ({"power": True, "mode": "A", "heat": False}, None),
     ],
 )
 def test_hvac_action_in_auto_mode(data, expected):
@@ -540,12 +540,14 @@ def test_as_number(raw, expected):
 
 def test_heat_cool_never_claims_a_direction():
     """On S21 the firmware derives `heat` from the mode, so it cannot answer
-    which way a heat_cool unit is working. Reporting idle understates it;
-    naming the wrong direction would be worse."""
+    which way a heat_cool unit is working. Idle would be a claim of its own -
+    the compressor is demonstrably running - so report nothing at all."""
     running = {"power": True, "mode": "A", "comp": 35, "heat": False}
     without_flag = {"power": True, "mode": "A", "comp": 35}
-    assert const.hvac_action_from_state(running) == "idle"
-    assert const.hvac_action_from_state(without_flag) == "idle"
+    assert const.hvac_action_from_state(running) is None
+    assert const.hvac_action_from_state(without_flag) is None
+    # A stopped compressor is idle whichever direction it would have run in.
+    assert const.hvac_action_from_state({"power": True, "mode": "A", "comp": 0}) == "idle"
 
 
 def test_device_auto_is_heat_cool_not_auto():

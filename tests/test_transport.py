@@ -117,17 +117,24 @@ def test_collect_module_refuses_an_oversized_payload():
     assert found == {"GuestAC": None}
 
 
-def test_collect_module_refuses_oversized_bytes_too():
-    """The bound applies to raw bytes, not only to an already decoded string.
+def test_collect_module_refuses_oversized_bytes_without_decoding_them():
+    """The bound applies to raw bytes, and is checked *before* the decode.
 
-    The host itself comes from the topic and is still noted; it is the payload
-    that is refused, so no MAC is taken from it.
+    Decoding first and measuring afterwards would reach the same verdict, so
+    the payload alone cannot show the order. This one reports its own size and
+    blows up if anyone decodes it, which pins the sequence rather than the
+    result. The host comes from the topic and is still noted; it is the
+    payload that is refused, so no MAC is taken from it.
     """
     from custom_components.faikout.const import MAX_PAYLOAD_CHARS
     from custom_components.faikout.transport import collect_module
 
+    class ExplodingPayload(bytes):
+        def decode(self, *args, **kwargs):  # noqa: D102 - see docstring above
+            raise AssertionError("payload was decoded before its size was checked")
+
     found = {}
-    huge = b'{"id": "AABBCCDDEEFF", "pad": "' + b"x" * MAX_PAYLOAD_CHARS + b'"}'
+    huge = ExplodingPayload(b'{"id": "AABBCCDDEEFF", "pad": "' + b"x" * MAX_PAYLOAD_CHARS + b'"}')
     collect_module(found, "state/GuestAC", huge)
     assert found == {"GuestAC": None}
 
