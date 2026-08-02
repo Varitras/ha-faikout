@@ -7,6 +7,7 @@ entity modules wrap them in the real enums.
 from __future__ import annotations
 
 import json
+import math
 
 DOMAIN = "faikout"
 
@@ -129,15 +130,20 @@ def control_topic(host: str) -> str:
 HVAC_OFF = "off"
 HVAC_HEAT = "heat"
 HVAC_COOL = "cool"
-HVAC_AUTO = "auto"
+# The device decides between heating and cooling while the user still sets the
+# target: that is Home Assistant's HEAT_COOL. Its AUTO means a schedule or
+# learned behaviour sets the temperature and the user cannot - which would
+# contradict the temperature control this entity offers. The firmware's own
+# Home Assistant discovery publishes heat_cool for the same reason.
+HVAC_HEAT_COOL = "heat_cool"
 HVAC_DRY = "dry"
 HVAC_FAN_ONLY = "fan_only"
-HVAC_MODES = [HVAC_OFF, HVAC_HEAT, HVAC_COOL, HVAC_AUTO, HVAC_DRY, HVAC_FAN_ONLY]
+HVAC_MODES = [HVAC_OFF, HVAC_HEAT, HVAC_COOL, HVAC_HEAT_COOL, HVAC_DRY, HVAC_FAN_ONLY]
 
 MODE_DEV_TO_HA = {
     "H": HVAC_HEAT,
     "C": HVAC_COOL,
-    "A": HVAC_AUTO,
+    "A": HVAC_HEAT_COOL,
     "D": HVAC_DRY,
     "F": HVAC_FAN_ONLY,
 }
@@ -220,6 +226,31 @@ def fan_ha_to_dev(mode: str) -> str:
 
 
 # --- Swing ------------------------------------------------------------------
+def as_number(value) -> int | float | None:
+    """A device value usable as a number, or None.
+
+    Everything on the state topics is untrusted, and Home Assistant raises
+    when a state cannot be rendered: strings, booleans, objects, NaN and
+    infinity all have to be refused rather than passed on. Very large
+    integers are refused too, since converting them can overflow.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    try:
+        # Only to find out whether it is convertible at all; the value itself
+        # stays an int, so a whole number is not displayed as "42.0".
+        float(value)
+    except OverflowError:
+        return None
+    return value
+
+
+def as_temperature(value) -> int | float | None:
+    return as_number(value)
+
+
 def as_bool(value) -> bool:
     """Truthiness of a device field, tolerating a stringified boolean.
 
@@ -361,11 +392,12 @@ def hvac_action_from_state(data: dict) -> str:
         return ACTION_COOLING
     if mode == "D":
         return ACTION_DRYING
-    if mode == "A" and running:
-        # Auto decides for itself, and the device has no cooling flag to match
-        # `heat`. A compressor that is confirmed to be turning while the unit
-        # is not heating is therefore cooling; without that this reported idle
-        # for the whole time an auto-mode unit was cooling.
+    if mode == "A" and running and "heat" in data:
+        # Auto decides for itself and there is no cooling flag to match `heat`,
+        # so cooling is inferred: the compressor is confirmed to be turning and
+        # the device says it is not heating. Only when it does say so - without
+        # the flag the direction is unknown and idle is reported rather than
+        # asserting the wrong one.
         return ACTION_COOLING
     return ACTION_IDLE
 

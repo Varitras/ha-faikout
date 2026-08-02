@@ -69,13 +69,13 @@ def collect_module(found: dict, topic: str, payload) -> None:
         if len(found) >= MAX_DISCOVERED_HOSTS:
             return
         found[host] = None
+    # Size first, on the raw payload: decoding one that is only going to be
+    # discarded already costs the work. On the Home Assistant transport this
+    # runs straight on the event loop.
+    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
+        return
     if isinstance(payload, (bytes, bytearray)):
         payload = payload.decode(errors="replace")
-    if payload is None or len(payload) > MAX_PAYLOAD_CHARS:
-        # Same bound the state topics use. On the Home Assistant transport this
-        # runs straight on the event loop, so an oversized payload would parse
-        # there.
-        return
     try:
         data = json.loads(payload)
     except (ValueError, TypeError):
@@ -340,11 +340,21 @@ class OwnMqttTransport(FaikoutTransport):
 
     def _on_message(self, client, userdata, msg):
         callback = self._subs.get(msg.topic)
-        if callback is not None:
-            # Marshal onto the HA event loop; entity callbacks must run there.
-            self.hass.loop.call_soon_threadsafe(
-                callback, FaikoutMessage(msg.topic, msg.payload)
+        if callback is None:
+            return
+        if msg.payload is not None and len(msg.payload) > MAX_PAYLOAD_CHARS:
+            # Dropped here, on paho's own thread. Handing it over first would
+            # put the whole payload on the event loop just to discard it there.
+            _LOGGER.warning(
+                "Dropping oversized payload on %s (%d bytes)",
+                msg.topic,
+                len(msg.payload),
             )
+            return
+        # Marshal onto the HA event loop; entity callbacks must run there.
+        self.hass.loop.call_soon_threadsafe(
+            callback, FaikoutMessage(msg.topic, msg.payload)
+        )
 
     # -- interface -----------------------------------------------------------
     async def async_subscribe(self, topic, callback):

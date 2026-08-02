@@ -1,14 +1,18 @@
 """Number platform for Faikout: the output demand limit."""
 from __future__ import annotations
 
-import math
-
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEMAND_MAX, DEMAND_MIN, DEMAND_STEP, build_demand_command
+from .const import (
+    DEMAND_MAX,
+    DEMAND_MIN,
+    DEMAND_STEP,
+    as_number,
+    build_demand_command,
+)
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
@@ -50,12 +54,12 @@ class FaikoutDemand(FaikoutEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        raw = self._data.get("demand")
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        value = as_number(self._data.get("demand"))
+        if value is None or not DEMAND_MIN <= value <= DEMAND_MAX:
+            # Outside the range the entity advertises. Home Assistant would
+            # show a slider position it refuses to let the user set again.
             return None
-        # NaN or infinity would be published as a state Home Assistant cannot
-        # store, and the device is untrusted.
-        return raw if math.isfinite(raw) else None
+        return value
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_send_control(**build_demand_command(value))

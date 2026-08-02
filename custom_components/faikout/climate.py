@@ -47,10 +47,11 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     def supported_features(self) -> ClimateEntityFeature:
         features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
-            | ClimateEntityFeature.FAN_MODE
             | ClimateEntityFeature.TURN_ON
             | ClimateEntityFeature.TURN_OFF
         )
+        if "fan" in self._data:
+            features |= ClimateEntityFeature.FAN_MODE
         # any(), not the tuple itself: a two-element tuple is always truthy,
         # so testing it directly advertised swing on units without any axis.
         vertical, horizontal = self._swing_axes
@@ -101,12 +102,12 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         return HVACAction(const.hvac_action_from_state(self._data))
 
     @property
-    def current_temperature(self):
-        return self._data.get("home")
+    def current_temperature(self) -> float | None:
+        return const.as_temperature(self._data.get("home"))
 
     @property
-    def target_temperature(self):
-        return self._data.get("temp")
+    def target_temperature(self) -> float | None:
+        return const.as_temperature(self._data.get("temp"))
 
     @property
     def fan_mode(self):

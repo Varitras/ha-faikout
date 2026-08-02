@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 
 from homeassistant.components.sensor import (
@@ -27,6 +26,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .const import as_number
 from .coordinator import FaikoutConfigEntry
 from .entity import FaikoutEntity
 
@@ -224,25 +224,32 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP:
             # Only a string can be parsed; anything else would reach Home
             # Assistant as a value it cannot treat as a timestamp.
-            return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+            if not isinstance(raw, str):
+                return None
+            parsed = dt_util.parse_datetime(raw)
+            # Home Assistant refuses a naive datetime for a timestamp sensor.
+            return dt_util.as_utc(parsed) if parsed is not None else None
+        if self._numeric:
+            # A numeric sensor has to get a number: Home Assistant rejects a
+            # string or a boolean where it expects one, on every state write.
+            value = as_number(raw)
+            if value is None:
+                return self._rejected(raw)
+            factor = getattr(self.entity_description, "factor", 1.0)
+            return value if factor == 1.0 else round(value * factor, 3)
         if isinstance(raw, (dict, list)):
             return self._rejected(raw)
-        factor = getattr(self.entity_description, "factor", 1.0)
-        if factor == 1.0:
-            # Unscaled values still have to be sane: a numeric sensor given
-            # NaN or infinity ends up as a state Home Assistant cannot store.
-            if isinstance(raw, float) and not math.isfinite(raw):
-                return self._rejected(raw)
-            return raw
-        if (
-            isinstance(raw, bool)
-            or not isinstance(raw, (int, float))
-            or not math.isfinite(raw)
-        ):
-            # The device is untrusted: a string here would raise inside this
-            # property on every state write.
-            return self._rejected(raw)
-        return round(raw * factor, 3)
+        return raw
+
+    @property
+    def _numeric(self) -> bool:
+        """Whether Home Assistant will treat this sensor's state as a number."""
+        d = self.entity_description
+        return bool(
+            d.state_class
+            or getattr(d, "factor", 1.0) != 1.0
+            or d.native_unit_of_measurement is not None
+        )
 
     def _rejected(self, raw):
         _LOGGER.debug("Ignoring unusable %s: %r", self.entity_description.key, raw)

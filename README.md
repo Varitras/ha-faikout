@@ -129,7 +129,7 @@ Reachable later via *Configure* on the integration entry:
 
 | Platform | What |
 |---|---|
-| **Climate** | power, mode (heat/cool/auto/dry/fan only), target temperature, fan speed, swing |
+| **Climate** | power, mode (heat/cool/heat_cool/dry/fan only), target temperature, fan speed, swing |
 | **Number** | demand — the output limit in percent, 30 to 100 in steps of 5 |
 | **Sensors** | room / outside / inlet / coil temperature, humidity, power, energy (total, heating, cooling), compressor frequency, fan speed |
 | **Diagnostics** | uptime, MQTT uptime, free memory, free SPI RAM, flash size, WiFi SSID/BSSID/channel/signal, IP address, reset reason, firmware build, protocol, last report |
@@ -156,6 +156,9 @@ settings if you want them.
   impossible to add. So a typo produces a device that stays *Unavailable* forever, with only a warning in
   the log. If a freshly added device never becomes available, check the hostname first: it is the middle
   part of the topics, and `mosquitto_sub -h your-broker -t 'state/+' -v` shows the ones that exist.
+- **The device's auto mode is `heat_cool`, not `auto`.** Home Assistant reserves `auto` for a schedule
+  or learned behaviour that also takes the temperature control away from the user, which is not what
+  this mode does. The firmware's own discovery publishes `heat_cool` as well.
 - **Some limits cannot be read from the device.** The temperature range and whether auto mode exists
   are firmware settings (`t.min`, `t.max`, `no.auto`), but the module does not publish them over MQTT,
   so the integration offers 16–32 °C and auto mode regardless. The same applies to the fan step count,

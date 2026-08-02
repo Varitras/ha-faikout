@@ -28,7 +28,10 @@ def test_topic_helpers():
 
 def test_mode_mapping_roundtrip():
     assert const.MODE_DEV_TO_HA == {
-        "H": "heat", "C": "cool", "A": "auto", "D": "dry", "F": "fan_only",
+        # "A" is heat_cool, not auto: the device picks the direction while the
+        # user still sets the target. Home Assistant's auto means a schedule
+        # sets it and the user cannot.
+        "H": "heat", "C": "cool", "A": "heat_cool", "D": "dry", "F": "fan_only",
     }
     assert const.MODE_HA_TO_DEV["heat"] == "H"
     assert const.MODE_HA_TO_DEV["fan_only"] == "F"
@@ -438,14 +441,14 @@ def test_hvac_action_ignores_a_bool_compressor_value():
 @pytest.mark.parametrize(
     ("data", "expected"),
     [
-        # auto, compressor turning, not heating -> it is cooling
-        ({"power": True, "mode": "A", "comp": 35}, "cooling"),
+        # auto, compressor turning, device says not heating -> it is cooling
+        ({"power": True, "mode": "A", "comp": 35, "heat": False}, "cooling"),
         # auto and heating says so itself
         ({"power": True, "mode": "A", "heat": True, "comp": 35}, "heating"),
         # auto, compressor stopped -> idle
         ({"power": True, "mode": "A", "comp": 0}, "idle"),
         # auto without a compressor reading: nothing can be inferred
-        ({"power": True, "mode": "A"}, "idle"),
+        ({"power": True, "mode": "A", "heat": False}, "idle"),
     ],
 )
 def test_hvac_action_in_auto_mode(data, expected):
@@ -509,3 +512,46 @@ def test_power_off_as_a_string_is_still_off(off):
 def test_heat_as_a_string_still_means_heating():
     data = {"power": "true", "mode": "H", "heat": "true", "comp": 40}
     assert const.hvac_action_from_state(data) == "heating"
+
+
+# --- what counts as a usable number -----------------------------------------
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (42, 42),          # an int stays an int, not "42.0"
+        (21.5, 21.5),
+        (0, 0),
+        (-5, -5),
+        ("42", None),      # a string is not a number
+        (True, None),      # a bool is not a measurement
+        (None, None),
+        ({"a": 1}, None),
+        ([1], None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (10**400, None),   # too large to convert
+    ],
+)
+def test_as_number(raw, expected):
+    assert const.as_number(raw) == expected
+    if expected is not None:
+        assert type(const.as_number(raw)) is type(expected)
+
+
+def test_auto_cooling_is_only_inferred_when_the_device_says_it_is_not_heating():
+    """Without the heat flag the direction is unknown; do not assert one."""
+    with_flag = {"power": True, "mode": "A", "comp": 35, "heat": False}
+    without = {"power": True, "mode": "A", "comp": 35}
+    assert const.hvac_action_from_state(with_flag) == "cooling"
+    assert const.hvac_action_from_state(without) == "idle"
+
+
+def test_device_auto_is_heat_cool_not_auto():
+    """Home Assistant's auto means the user cannot set a temperature."""
+    assert const.MODE_HA_TO_DEV["heat_cool"] == "A"
+    assert "auto" not in const.HVAC_MODES
+    assert const.hvac_mode_from_state({"power": True, "mode": "A"}) == "heat_cool"
+
+
+def test_setting_heat_cool_sends_the_device_auto_mode():
+    assert const.build_hvac_mode_command("heat_cool") == {"power": True, "mode": "A"}

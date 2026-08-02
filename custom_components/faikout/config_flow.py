@@ -137,9 +137,14 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         """What identifies the broker an entry talks to."""
         if not options.get(CONF_USE_OWN_MQTT):
             return ("ha",)  # Home Assistant's own MQTT client, only one of those
+        tls = bool(options.get(CONF_MQTT_TLS))
         return (
             str(options.get(CONF_MQTT_HOST, "")).strip().lower(),
-            int(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
+            # The port actually connected to, and TLS as well: a stored 1883
+            # with TLS on really means 8883, and plaintext 1883 is a different
+            # broker endpoint from TLS 1883.
+            effective_port(options.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT), tls),
+            tls,
         )
 
     def _same_broker(self, entry) -> bool:

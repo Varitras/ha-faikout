@@ -478,3 +478,42 @@ async def test_string_false_online_marks_the_device_unavailable(hass):
     await hass.async_block_till_done()
 
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_fan_control_is_not_offered_without_a_fan(hass):
+    """A visible control the device ignores looks like a broken integration."""
+    from homeassistant.components.climate import ClimateEntityFeature
+
+    status = {k: v for k, v in STATUS_PAYLOAD.items() if k != "fan"}
+    await setup_integration(hass, make_transport(status=status))
+
+    a = hass.states.get(CLIMATE).attributes
+    assert not a["supported_features"] & ClimateEntityFeature.FAN_MODE
+
+
+@pytest.mark.parametrize("bad", ["warm", True, {"v": 1}, float("nan")])
+async def test_climate_temperatures_reject_unusable_values(hass, bad):
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    assert hass.states.get(CLIMATE).attributes["current_temperature"] == 19.5
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"home": bad, "temp": bad}))
+    await hass.async_block_till_done()
+
+    a = hass.states.get(CLIMATE).attributes
+    assert a.get("current_temperature") is None
+    assert a.get("temperature") is None
+
+
+async def test_demand_below_the_device_minimum_is_not_reported(hass):
+    """The entity advertises 30..100; a lower value could not be set again."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"demand": 0}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"number.{TEST_HOST}_demand").state in (
+        "unknown",
+        "unavailable",
+    )
