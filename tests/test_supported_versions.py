@@ -9,6 +9,8 @@ import json
 import pathlib
 import re
 
+import pytest
+
 REPO = pathlib.Path(__file__).parents[1]
 WORKFLOW = (REPO / ".github/workflows/tests.yml").read_text(encoding="utf-8")
 
@@ -45,3 +47,19 @@ def test_every_action_is_pinned_or_a_known_moving_ref():
         if used not in MOVING_REFS and not re.search(r"@(v\d|[0-9a-f]{40})", used)
     ]
     assert not unpinned, f"not pinned to a version or an allowed moving ref: {unpinned}"
+
+
+def test_the_claimed_minimum_provides_the_registry_api_we_call():
+    """The floor is not a number we picked - it is the release that has the API.
+
+    The coordinator looks a device up by identifier and config entry, which
+    only exists from the claimed minimum onwards. Running against anything
+    older has to fail here rather than at the first metadata update.
+    """
+    pytest.importorskip("homeassistant")
+    from homeassistant.helpers.device_registry import DeviceRegistry
+
+    assert hasattr(DeviceRegistry, "async_get_device_by_identifier"), (
+        f"the installed Home Assistant is older than the claimed minimum "
+        f"{_claimed_minimum()}"
+    )

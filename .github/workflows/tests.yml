@@ -21,10 +21,10 @@ jobs:
           # The current stable Home Assistant. Pinned on purpose: an unpinned
           # pytest-homeassistant-custom-component tracks the newest release
           # including betas, so this lane would gate releases on a prerelease.
-          # Bump when a new stable lands (0.13.348 pins 2026.7.4).
-          - label: current HA 2026.7
+          # Bump when a new stable lands (0.13.363 pins 2026.9.0).
+          - label: current HA 2026.9
             python-version: "3.14"
-            phcc: "==0.13.348"
+            phcc: "==0.13.363"
             coverage: "--cov=custom_components/faikout --cov-fail-under=90"
           # Newest release including betas. Advisory: it warns about upcoming
           # breakage without letting a Home Assistant prerelease block a fix.
@@ -36,12 +36,12 @@ jobs:
           # Guards the minimum version claimed in hacs.json and the README.
           # Each pytest-homeassistant-custom-component release pins exactly one
           # Home Assistant version, so the minimum is selected by pinning phcc:
-          # 0.13.221 pins homeassistant 2025.3.0, the first release shipping
-          # paho-mqtt 2.x, which the own MQTT client requires. That HA needs
-          # Python 3.13, hence the paired Python version.
-          - label: minimum HA 2025.3
-            python-version: "3.13"
-            phcc: "==0.13.221"
+          # 0.13.354 pins homeassistant 2026.8.0, the first release providing
+          # device_registry.async_get_device_by_identifier, which the coordinator
+          # requires. That HA needs Python 3.14.2, hence the paired version.
+          - label: minimum HA 2026.8
+            python-version: "3.14"
+            phcc: "==0.13.354"
             coverage: ""
     continue-on-error: ${{ matrix.advisory == true }}
     steps:

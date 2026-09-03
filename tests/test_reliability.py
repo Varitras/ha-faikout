@@ -216,10 +216,12 @@ async def test_late_metadata_updates_device_entry(hass):
     from homeassistant.helpers import device_registry as dr
 
     transport = make_transport(meta={})
-    await setup_integration(hass, transport)
+    entry = await setup_integration(hass, transport)
 
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={("faikout", TEST_HOST)})
+    device = registry.async_get_device_by_identifier(
+        ("faikout", TEST_HOST), entry.entry_id
+    )
     assert device.model in (None, "Faikout")
 
     transport.feed(
@@ -230,7 +232,9 @@ async def test_late_metadata_updates_device_entry(hass):
     )
     await hass.async_block_till_done()
 
-    device = registry.async_get_device(identifiers={("faikout", TEST_HOST)})
+    device = registry.async_get_device_by_identifier(
+        ("faikout", TEST_HOST), entry.entry_id
+    )
     assert device.model == "Faikin S21"
     assert device.sw_version == "v2.0"
     assert (dr.CONNECTION_NETWORK_MAC, "00:11:22:33:44:55") in device.connections

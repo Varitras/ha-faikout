@@ -177,8 +177,14 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         meta = device_metadata(self.device_meta)
         if meta == self._registered_meta:
             return
+        if self.config_entry is None:
+            return
         registry = dr.async_get(self.hass)
-        device = registry.async_get_device(identifiers={(DOMAIN, self.device_id)})
+        # By identifier *and* entry: identifiers stopped being unique across
+        # config entries, so the plain lookup is ambiguous and deprecated.
+        device = registry.async_get_device_by_identifier(
+            (DOMAIN, self.device_id), self.config_entry.entry_id
+        )
         if device is None:
             return  # entities not created yet; they will pick it up themselves
         self._registered_meta = meta

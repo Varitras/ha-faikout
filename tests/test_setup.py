@@ -180,12 +180,14 @@ async def test_energy_sensor_converts_wh_to_kwh(hass):
 
 
 async def test_device_info_from_meta_topic(hass):
-    await setup_integration(hass, make_transport())
+    entry = await setup_integration(hass, make_transport())
 
     from homeassistant.helpers import device_registry as dr
 
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={("faikout", TEST_HOST)})
+    device = registry.async_get_device_by_identifier(
+        ("faikout", TEST_HOST), entry.entry_id
+    )
     assert device is not None
     assert device.model == "Faikin S21"
     assert device.sw_version == "v1.10"
