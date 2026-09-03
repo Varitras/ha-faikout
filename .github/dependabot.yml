@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Monthly and grouped: one pull request for all action bumps. The test
+  # workflow runs on pull_request, so every bump arrives already verified.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+# No pip entry on purpose. requirements-test.txt carries a floor (pytest>=8.0)
+# rather than a pin, so there is nothing for the bot to raise. The versions that
+# are really pinned - the Home Assistant and phcc releases each test lane
+# installs - live in the workflow matrix, which Dependabot does not read. Those
+# stay a manual decision, which is the point: the lanes deliberately test the
+# current, the minimum and the upcoming release.
