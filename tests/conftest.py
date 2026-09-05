@@ -35,6 +35,27 @@ def auto_enable_custom_integrations(request):
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_deprecated_home_assistant_call(caplog):
+    """Fail on any Home Assistant deprecation this integration triggers.
+
+    Home Assistant raises on some deprecated calls but only logs the rest for a
+    custom integration, and a logged one leaves the suite green. That is how
+    `merge_connections` survived a release: the running system warned about it
+    for months while every test passed. Whatever Home Assistant says will stop
+    working has to fail here instead.
+    """
+    yield
+    reported = [
+        record.getMessage()
+        for record in caplog.get_records("call")
+        if "will stop working in Home Assistant" in record.getMessage()
+    ]
+    assert not reported, "Home Assistant reported a deprecated call:\n" + "\n".join(
+        reported
+    )
+
+
 # --- Fake transport ---------------------------------------------------------
 # Stands in for HaMqttTransport/OwnMqttTransport so the whole integration can be
 # set up without a broker. Tests push messages in with `feed()` and inspect the

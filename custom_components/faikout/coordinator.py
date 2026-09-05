@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.typing import UndefinedType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
@@ -188,16 +189,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if device is None:
             return  # entities not created yet; they will pick it up themselves
         self._registered_meta = meta
+        connections: set[tuple[str, str]] | UndefinedType = dr.UNDEFINED
+        if meta["mac"]:
+            # The full set, not an addition: merging is deprecated, so the
+            # device's own connections are carried over here instead.
+            connections = device.connections | {
+                (dr.CONNECTION_NETWORK_MAC, dr.format_mac(meta["mac"]))
+            }
         registry.async_update_device(
             device.id,
             model=meta["model"],
             sw_version=meta["sw_version"],
-            merge_connections=(
-                {(dr.CONNECTION_NETWORK_MAC, dr.format_mac(meta["mac"]))}
-                if meta["mac"]
-                else None
-            )
-            or dr.UNDEFINED,
+            new_connections=connections,
         )
 
     @callback
