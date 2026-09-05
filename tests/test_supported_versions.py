@@ -12,7 +12,10 @@ import re
 import pytest
 
 REPO = pathlib.Path(__file__).parents[1]
-WORKFLOW = (REPO / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+# Every workflow, not one file: a guard pinned to a single path goes blind
+# the moment a second workflow arrives, and stays green while it does.
+WORKFLOW_FILES = sorted((REPO / ".github/workflows").glob("*.yml"))
+WORKFLOW = "\n".join(path.read_text(encoding="utf-8") for path in WORKFLOW_FILES)
 
 # Actions deliberately tracked on a moving ref: both are published by the
 # projects they validate against and carry no versioned releases to pin.
@@ -37,6 +40,11 @@ def test_readme_states_the_same_minimum():
     readme = (REPO / "README.md").read_text(encoding="utf-8")
     series = _claimed_minimum().rsplit(".", 1)[0]
     assert f"**{series}** or newer" in readme
+
+
+def test_workflow_directory_is_not_empty():
+    """The scan above is only worth as much as the files it found."""
+    assert WORKFLOW_FILES, "no workflow files found - the guards below scan nothing"
 
 
 def test_every_action_is_pinned_or_a_known_moving_ref():
