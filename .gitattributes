@@ -1,0 +1,3 @@
+# A shell script with CRLF is not executable on Linux: the interpreter line
+# keeps the carriage return. Both the CI and the pre-push hook run this one.
+*.sh text eol=lf
