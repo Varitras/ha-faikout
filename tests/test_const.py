@@ -571,3 +571,30 @@ def test_device_auto_is_heat_cool_not_auto():
 
 def test_setting_heat_cool_sends_the_device_auto_mode():
     assert const.build_hvac_mode_command("heat_cool") == {"power": True, "mode": "A"}
+
+
+# --- log hygiene -------------------------------------------------------------
+def test_log_identifier_hides_the_name_but_stays_stable():
+    """Two lines about one module have to be relatable without naming it."""
+    first = const.log_identifier("hall.faikin")
+    assert "hall" not in first
+    assert first == const.log_identifier("hall.faikin")
+    assert first != const.log_identifier("bedroom.faikin")
+
+
+def test_log_identifier_says_so_when_there_is_nothing():
+    assert const.log_identifier("") == "<unset>"
+    assert const.log_identifier(None) == "<unset>"
+
+
+def test_masked_topic_keeps_the_shape_and_drops_the_name():
+    masked = const.masked_topic(const.status_topic("hall.faikin"))
+    assert masked.startswith("state/")
+    assert masked.endswith("/status")
+    assert "hall" not in masked
+
+
+def test_masked_topic_survives_something_that_is_not_a_topic():
+    """The topic comes off the wire, so it is not necessarily well formed."""
+    assert "nonsense" not in const.masked_topic("nonsense")
+    assert const.masked_topic("") == "<unset>"

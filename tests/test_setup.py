@@ -209,6 +209,36 @@ async def test_lwt_marks_entities_unavailable(hass):
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
 
 
+async def test_availability_is_logged_once_each_way_and_never_as_an_error(
+    hass, caplog
+):
+    """A module the user switched off is news, not a fault.
+
+    Home Assistant's log-when-unavailable rule asks for one line each way at
+    info level; anything louder puts a red row in the log panel every time
+    someone turns their air conditioner off.
+    """
+    import logging
+
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="custom_components.faikout.coordinator"):
+        transport.feed(state_topic(TEST_HOST), "false")
+        await hass.async_block_till_done()
+        transport.feed(state_topic(TEST_HOST), "false")  # no second line for the same news
+        await hass.async_block_till_done()
+        transport.feed(state_topic(TEST_HOST), "true")
+        await hass.async_block_till_done()
+
+    lines = [record for record in caplog.records if "Module" in record.getMessage()]
+    assert [record.levelno for record in lines] == [logging.INFO, logging.INFO]
+    assert "stopped reporting" in lines[0].getMessage()
+    assert "is reporting again" in lines[1].getMessage()
+    assert TEST_HOST not in lines[0].getMessage()
+
+
 async def test_unparseable_payload_keeps_last_state(hass):
     transport = make_transport()
     await setup_integration(hass, transport)

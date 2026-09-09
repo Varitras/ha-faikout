@@ -24,6 +24,8 @@ from .const import (
     as_bool,
     control_topic,
     device_metadata,
+    log_identifier,
+    masked_topic,
     merge_state,
     parse_device_meta,
     state_topic,
@@ -124,7 +126,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             return
         self.transport_online = connected
         if not connected:
-            _LOGGER.warning("Lost the MQTT connection carrying %s", self.host)
+            _LOGGER.warning(
+                "Lost the MQTT connection carrying %s", log_identifier(self.host)
+            )
         # Availability changed for every entity — push immediately rather than
         # letting the update throttle delay the bad news.
         self.async_update_listeners()
@@ -132,7 +136,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     @callback
     def _auth_failed(self) -> None:
         """The broker rejected our credentials while the entry was running."""
-        _LOGGER.warning("Broker rejected the credentials for %s", self.host)
+        _LOGGER.warning(
+            "Broker rejected the credentials for %s", log_identifier(self.host)
+        )
         if self.config_entry is not None:
             self.config_entry.async_start_reauth(self.hass)
 
@@ -160,6 +166,15 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             self.module_online = as_bool(parsed.get("online", True))
             self._update_device_registry()
         if self.module_online != was_online:
+            # Once each way, and at info: a module the user switched off is not
+            # an error and not something they can act on, which is what Home
+            # Assistant's log-when-unavailable rule asks for.
+            message = (
+                "Module %s is reporting again"
+                if self.module_online
+                else "Module %s stopped reporting"
+            )
+            _LOGGER.info(message, log_identifier(self.host))
             # Availability, like a lost broker link, must not sit in the update
             # throttle: "this device is gone" is exactly the news a user needs
             # promptly, and holding it back shows stale values as live.
@@ -207,7 +222,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
     def _message_received(self, msg) -> None:
         payload = _decoded(msg.payload)
         if payload is None:
-            _LOGGER.warning("Ignoring oversized state on %s", msg.topic)
+            _LOGGER.warning("Ignoring oversized state on %s", masked_topic(msg.topic))
             return
         base = self._pending if self._pending is not None else self.data
         new_state = merge_state(base, payload)
@@ -216,7 +231,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             # log is not the place to reproduce it in full.
             _LOGGER.warning(
                 "Ignoring unparseable state on %s: %.80r%s",
-                msg.topic,
+                masked_topic(msg.topic),
                 payload,
                 "..." if len(payload) > 80 else "",
             )
@@ -273,7 +288,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 "Nothing received on %s within %ss. The module may be switched "
                 "off, or the hostname may be wrong - it is the middle part of "
                 "the MQTT topics. Entities stay unavailable until it reports",
-                status_topic(self.host),
+                masked_topic(status_topic(self.host)),
                 timeout,
             )
 

@@ -41,6 +41,8 @@ from .const import (
     MAX_DISCOVERED_HOSTS,
     MAX_PAYLOAD_CHARS,
     effective_port,
+    log_identifier,
+    masked_topic,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -238,7 +240,7 @@ class OwnMqttTransport(FaikoutTransport):
             _LOGGER.warning(
                 "TLS certificate checks are disabled for %s:%s. The connection "
                 "is encrypted but an impersonated broker cannot be detected",
-                self._host,
+                log_identifier(self._host),
                 self._port,
             )
         else:
@@ -347,7 +349,7 @@ class OwnMqttTransport(FaikoutTransport):
             # put the whole payload on the event loop just to discard it there.
             _LOGGER.warning(
                 "Dropping oversized payload on %s (%d bytes)",
-                msg.topic,
+                masked_topic(msg.topic),
                 len(msg.payload),
             )
             return
@@ -434,7 +436,7 @@ async def async_discover_on_broker(
                 # switched off on this install" for the setup path as well.
                 _LOGGER.warning(
                     "TLS certificate checks are disabled while probing %s:%s",
-                    host,
+                    log_identifier(host),
                     port,
                 )
             else:

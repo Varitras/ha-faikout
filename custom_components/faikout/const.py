@@ -6,6 +6,7 @@ entity modules wrap them in the real enums.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 
@@ -109,6 +110,33 @@ def is_valid_host(host: str) -> bool:
     if any(c in host for c in "+#/"):
         return False
     return all(c.isprintable() and not c.isspace() for c in host)
+
+
+def log_identifier(value) -> str:
+    """A stand-in for a name that must not appear in a log record.
+
+    Home Assistant logs are the usual attachment to a bug report, and a module
+    host name or broker address says where someone lives. The digest is stable
+    within an installation, so two lines about the same module can still be
+    told apart without naming it.
+    """
+    text = str(value or "")
+    if not text:
+        return "<unset>"
+    return "#" + hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
+
+
+def masked_topic(topic) -> str:
+    """The same, for a topic: the host is the middle segment and only that.
+
+    Which topic a message arrived on is the useful half of such a log line, so
+    the shape survives and only the name inside it is replaced.
+    """
+    parts = str(topic or "").split("/")
+    if len(parts) < 2:
+        return log_identifier(topic)
+    parts[1] = log_identifier(parts[1])
+    return "/".join(parts)
 
 
 def state_topic(host: str) -> str:
