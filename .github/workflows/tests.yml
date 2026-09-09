@@ -1,9 +1,16 @@
 name: Tests
 
+# Every branch push, so a feature branch is proven before it is merged.
+# Dependabot pushes its branches too, and its pull request already runs this,
+# so ignoring them on push avoids testing each bump twice.
+# `branches` and `branches-ignore` must never both appear on one event: GitHub
+# rejects the whole file, nothing runs at all, and there is no red cross to
+# wait for - only a note in the Actions tab.
 on:
   push:
-    branches: [master]
+    branches-ignore: ['dependabot/**']
   pull_request:
+  workflow_dispatch:
 
 # Nothing here writes to the repository.
 permissions:
