@@ -124,7 +124,9 @@ Reachable later via *Configure* on the integration entry:
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
 - **Own MQTT client** — switch an existing entry between the two transports, with the broker details and
-  the TLS switches described above.
+  the TLS switches described above. The form never shows the stored password: leave the field blank to
+  keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
+  the username. Clearing the username removes both.
 
 ## Entities
 
@@ -158,9 +160,10 @@ MQTT topics carrying them appear as a short stable digest (`state/#3204c9cb/stat
 are described by field and type rather than reproduced, and a module going away or coming back is one
 line each way at info level.
 
-One thing is outside its control: Home Assistant itself names the config entry in its own setup and
-retry messages, and the entry is named after the module host you chose. Rename the entry if that name
-should not appear there either.
+What is outside its control is naming. The config entry, the device and every entity id are derived
+from the module host you chose, and Home Assistant uses those names in its own messages - setup and
+retry lines name the entry, and warnings about a slow or misbehaving entity name the entity id. Rename
+the entry and the device if the host should not appear there either.
 
 ## Known limitations
 
