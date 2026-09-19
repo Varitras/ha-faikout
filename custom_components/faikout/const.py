@@ -275,10 +275,6 @@ def as_number(value) -> int | float | None:
     return value
 
 
-def as_temperature(value) -> int | float | None:
-    return as_number(value)
-
-
 def as_bool(value) -> bool:
     """Truthiness of a device field, tolerating a stringified boolean.
 

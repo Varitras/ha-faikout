@@ -104,11 +104,11 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
-        return const.as_temperature(self._data.get("home"))
+        return const.as_number(self._data.get("home"))
 
     @property
     def target_temperature(self) -> float | None:
-        return const.as_temperature(self._data.get("temp"))
+        return const.as_number(self._data.get("temp"))
 
     @property
     def fan_mode(self):
