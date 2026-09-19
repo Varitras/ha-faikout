@@ -71,7 +71,8 @@
           "mqtt_username": "MQTT-Benutzername",
           "mqtt_password": "MQTT-Passwort",
           "mqtt_tls": "TLS verwenden (verschlüsselte Verbindung)",
-          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsigniert)"
+          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsigniert)",
+          "mqtt_clear_password": "Gespeichertes Passwort entfernen"
         },
         "data_description": {
           "mqtt_password": "Leer lassen, um das gespeicherte Passwort zu behalten. Ein leerer Benutzername entfernt beides."

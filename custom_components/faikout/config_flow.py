@@ -14,6 +14,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_HOST,
     CONF_MAC,
+    CONF_MQTT_CLEAR_PASSWORD,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -354,15 +355,19 @@ class FaikoutOptionsFlow(OptionsFlow):
     """Options: update throttle and an optional own MQTT client."""
 
     def _password_to_store(self, submitted: dict) -> str:
-        """Credentials are a pair. The form never shows the stored password, so
-        a blank field beside a username means it is unchanged; clearing the
-        username is how an anonymous broker is configured, and takes the
-        password with it."""
+        """Credentials are a pair, and the form never shows the stored password.
+
+        No username means no password, whatever was typed. With a username, a
+        blank field means unchanged, and removing the password is its own
+        action - there is nothing on the form to delete otherwise.
+        """
+        if not submitted.get(CONF_MQTT_USERNAME):
+            return ""
+        if submitted.get(CONF_MQTT_CLEAR_PASSWORD):
+            return ""
         typed = submitted.get(CONF_MQTT_PASSWORD, "")
         if typed:
             return typed
-        if not submitted.get(CONF_MQTT_USERNAME):
-            return ""
         return self.config_entry.options.get(CONF_MQTT_PASSWORD, "")
 
     async def async_step_init(
@@ -384,6 +389,7 @@ class FaikoutOptionsFlow(OptionsFlow):
                 if CONF_MQTT_PORT in cleaned:
                     cleaned[CONF_MQTT_PORT] = int(cleaned[CONF_MQTT_PORT])
                 cleaned[CONF_MQTT_PASSWORD] = self._password_to_store(cleaned)
+                cleaned.pop(CONF_MQTT_CLEAR_PASSWORD, None)  # an action, not a setting
                 return self.async_create_entry(data=cleaned)
 
         o = self.config_entry.options
@@ -431,6 +437,9 @@ class FaikoutOptionsFlow(OptionsFlow):
                         type=selector.TextSelectorType.PASSWORD
                     )
                 ),
+                vol.Optional(
+                    CONF_MQTT_CLEAR_PASSWORD, default=False
+                ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_MQTT_TLS, default=o.get(CONF_MQTT_TLS, False)
                 ): selector.BooleanSelector(),

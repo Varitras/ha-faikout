@@ -47,6 +47,9 @@ CONF_MQTT_HOST = "mqtt_host"
 CONF_MQTT_PORT = "mqtt_port"
 CONF_MQTT_USERNAME = "mqtt_username"
 CONF_MQTT_PASSWORD = "mqtt_password"
+# An action on the options form, never stored: the form cannot show the
+# stored password to be deleted, so removing it needs a signal of its own.
+CONF_MQTT_CLEAR_PASSWORD = "mqtt_clear_password"
 # Encrypt the connection to an own broker. Off by default, because a broker on
 # the LAN commonly has no usable certificate.
 CONF_MQTT_TLS = "mqtt_tls"
