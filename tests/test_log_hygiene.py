@@ -71,26 +71,34 @@ def _caught_exceptions(function: ast.AST) -> set[str]:
     }
 
 
-def _assignments(function: ast.AST) -> dict[str, ast.AST]:
-    """Simple `name = value` assignments in a function, last one wins."""
-    values: dict[str, ast.AST] = {}
+def _assignments(function: ast.AST) -> dict[str, list[ast.Assign]]:
+    """Simple `name = value` assignments in a function, in source order."""
+    values: dict[str, list[ast.Assign]] = {}
     for node in ast.walk(function):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    values[target.id] = node.value
+                    values.setdefault(target.id, []).append(node)
     return values
 
 
-def _message_parts(call: ast.Call, assignments: dict[str, ast.AST]):
+def _value_in_force(name: str, at: ast.Call, assignments) -> ast.AST | None:
+    """The assignment a call actually sees: the nearest one above it. The
+    last one in the function would let a harmless reassignment below the
+    raise hide what was raised."""
+    before = [node for node in assignments.get(name, ()) if node.lineno < at.lineno]
+    return before[-1].value if before else None
+
+
+def _message_parts(call: ast.Call, assignments):
     """The pieces of a call that reach the log, with f-strings and simple
     variables unfolded: a message built into a name first and raised after
     would otherwise hide what it interpolates."""
     is_exception = isinstance(call.func, ast.Name)
     arguments = call.args if is_exception else call.args[1:]
     for argument in arguments:
-        if isinstance(argument, ast.Name) and argument.id in assignments:
-            argument = assignments[argument.id]
+        if isinstance(argument, ast.Name):
+            argument = _value_in_force(argument.id, call, assignments) or argument
         if isinstance(argument, ast.JoinedStr):
             for part in argument.values:
                 if isinstance(part, ast.FormattedValue):
@@ -100,7 +108,11 @@ def _message_parts(call: ast.Call, assignments: dict[str, ast.AST]):
 
 
 def _offenders(module: pathlib.Path) -> list[str]:
-    tree = ast.parse(module.read_text(encoding="utf-8"))
+    return _offenders_of(module, module.read_text(encoding="utf-8"))
+
+
+def _offenders_of(module: pathlib.Path, source: str) -> list[str]:
+    tree = ast.parse(source)
     found = []
     for scope in ast.walk(tree):
         if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -144,3 +156,30 @@ def test_the_package_has_modules_to_scan():
 def test_nothing_identifying_reaches_a_log_in_the_clear(module):
     offenders = _offenders(module)
     assert not offenders, "mask what identifies the installation:\n" + "\n".join(offenders)
+
+
+# --- the guard itself ---------------------------------------------------------
+def _offenders_in(source: str) -> list[str]:
+    path = pathlib.Path("snippet.py")
+    return [line.split(" ", 1)[1] for line in _offenders_of(path, source)]
+
+
+def test_guard_resolves_the_assignment_in_force_at_the_raise():
+    """Last assignment in the function is not the one that matters; the one
+    before the raise is. Reading the wrong one hides a leak behind a later,
+    harmless reassignment."""
+    leak_then_reassign = '''
+def f(self):
+    message = f"broker {self._host} refused"
+    raise ConfigEntryNotReady(message)
+    message = "harmless"
+'''
+    assert _offenders_in(leak_then_reassign) == ["passes ['_host']"]
+
+    reassign_then_safe = '''
+def f(self):
+    message = f"broker {self._host} refused"
+    message = "harmless"
+    raise ConfigEntryNotReady(message)
+'''
+    assert _offenders_in(reassign_then_safe) == []
