@@ -418,6 +418,8 @@ def hvac_action_from_state(data: dict) -> str | None:
     # compared into a sensible answer. The sensors drop them for the same
     # reason, and this path must not be the one place that lets them through.
     comp = as_number(data.get("comp"))
+    if comp is not None and comp < 0:
+        comp = None  # not a frequency a compressor can run at
     running = None if comp is None else comp > 0
     if running is False:
         return ACTION_IDLE

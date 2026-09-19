@@ -437,6 +437,14 @@ def test_hvac_action_ignores_a_bool_compressor_value():
     assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": False}) == "cooling"
 
 
+def test_hvac_action_ignores_a_negative_compressor_frequency():
+    """Below zero is not a frequency the compressor can run at. Read as a
+    number it compares as "not running" and the unit shows idle while nothing
+    says it is; it has to count as no reading instead."""
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": -1}) == "cooling"
+    assert const.hvac_action_from_state({"power": True, "mode": "A", "comp": -1}) is None
+
+
 @pytest.mark.parametrize("comp", [float("nan"), float("inf"), float("-inf")])
 def test_hvac_action_ignores_a_non_finite_compressor_value(comp):
     """json.loads accepts NaN and Infinity, and neither can be compared.
