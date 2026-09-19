@@ -137,7 +137,11 @@ def error_kind(error: BaseException) -> str:
     machine-readable reason survive. The cause chain keeps the full text for
     anyone debugging with the exception in hand.
     """
-    reason = getattr(error, "reason", None) or getattr(error, "errno", None)
+    reason = (
+        getattr(error, "reason", None)
+        or getattr(error, "reason_code", None)
+        or getattr(error, "errno", None)
+    )
     name = type(error).__name__
     return f"{name}({reason})" if reason else name
 

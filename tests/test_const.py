@@ -606,3 +606,22 @@ def test_masked_topic_survives_something_that_is_not_a_topic():
     """The topic comes off the wire, so it is not necessarily well formed."""
     assert "nonsense" not in const.masked_topic("nonsense")
     assert const.masked_topic("") == "<unset>"
+
+
+def test_error_kind_keeps_the_reason_and_drops_the_text():
+    """A library message quotes what it was given - a TLS check names the
+    hostname it rejected. The kind and a machine-readable reason are enough."""
+    import ssl
+
+    tls = ssl.SSLCertVerificationError("hostname 'broker.invalid' doesn't match")
+    assert "broker.invalid" not in const.error_kind(tls)
+    assert const.error_kind(tls).startswith("SSLCertVerificationError")
+    assert const.error_kind(ConnectionRefusedError(111, "refused")) == "ConnectionRefusedError(111)"
+    assert const.error_kind(TimeoutError()) == "TimeoutError"
+
+    class Refused(Exception):
+        def __init__(self):
+            super().__init__("Broker refused: 5")
+            self.reason_code = 5
+
+    assert const.error_kind(Refused()) == "Refused(5)"
