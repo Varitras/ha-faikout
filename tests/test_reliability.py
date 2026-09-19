@@ -504,6 +504,65 @@ async def test_discover_on_broker_refusal_is_reported(hass):
         )
 
 
+async def test_discovery_timeout_does_not_name_the_broker(hass):
+    """The config flow logs this failure; a silent broker must not put its
+    address into that line."""
+    from custom_components.faikout import transport as transport_module
+
+    class SilentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def username_pw_set(self, *args):
+            pass
+
+        def connect(self, host, port, keepalive):
+            pass  # never answers
+
+        def subscribe(self, *args):
+            pass
+
+        def loop_start(self):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+    with (
+        patch.object(paho, "Client", SilentClient),
+        patch("custom_components.faikout.transport.CONNECT_TIMEOUT", 0.05),
+        pytest.raises(OSError) as raised,
+    ):
+        await transport_module.async_discover_on_broker(
+            hass, "broker.invalid", 1883, "u", "p", 0
+        )
+
+    assert "broker.invalid" not in str(raised.value)
+    assert ":1883" in str(raised.value)
+
+
+async def test_tls_failure_message_does_not_repeat_the_library_text(hass):
+    """A certificate check spells out the hostname it rejected. Home Assistant
+    logs this exception's text on every retry, so only the kind of failure may
+    travel, never what the library said."""
+    import ssl
+
+    transport = _tls_transport(hass)
+    transport._client.tls_set.side_effect = ssl.SSLCertVerificationError(
+        "hostname 'broker.invalid' doesn't match 'localhost'"
+    )
+
+    with pytest.raises(ConfigEntryNotReady) as raised:
+        await transport.async_connect()
+
+    message = str(raised.value)
+    assert "broker.invalid" not in message
+    assert "SSLCertVerificationError" in message
+
+
 async def test_first_state_is_not_delayed_by_the_throttle(hass):
     """The throttle must not hold back the very first value after a restart."""
     from custom_components.faikout.const import CONF_UPDATE_INTERVAL

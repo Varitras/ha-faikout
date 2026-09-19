@@ -24,6 +24,7 @@ from .const import (
     as_bool,
     control_topic,
     device_metadata,
+    error_kind,
     log_identifier,
     masked_topic,
     merge_state,
@@ -117,7 +118,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             # coming up (common on a restart), which would otherwise leave this
             # entry permanently in SETUP_ERROR until reloaded by hand.
             raise ConfigEntryNotReady(
-                f"Cannot subscribe to the topics for {log_identifier(self.host)}: {err}"
+                f"Cannot subscribe to the topics for {log_identifier(self.host)}: {error_kind(err)}"
             ) from err
 
     @callback
@@ -306,7 +307,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             raise
         except Exception as err:
             raise HomeAssistantError(
-                f"Failed to send {fields} to {log_identifier(self.host)}: {err}"
+                f"Failed to send {fields} to {log_identifier(self.host)}: {error_kind(err)}"
             ) from err
 
     async def async_shutdown(self) -> None:

@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
     device_id_for,
     effective_port,
+    error_kind,
     is_valid_host,
     normalize_mac,
 )
@@ -241,12 +242,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                     broker[CONF_MQTT_TLS_INSECURE],
                 )
             except MqttConnectionRefused as err:
-                _LOGGER.debug("Broker refused the connection", exc_info=True)
+                _LOGGER.debug("Broker refused the connection: %s", error_kind(err))
                 errors["base"] = (
                     "invalid_auth" if err.is_auth_failure else "cannot_connect"
                 )
-            except Exception:  # noqa: BLE001 - any other connect problem
-                _LOGGER.debug("Broker discovery failed", exc_info=True)
+            except Exception as err:  # noqa: BLE001 - any other connect problem
+                _LOGGER.debug("Broker discovery failed: %s", error_kind(err))
                 errors["base"] = "cannot_connect"
             else:
                 self._broker = broker
@@ -283,8 +284,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = (
                     "invalid_auth" if err.is_auth_failure else "cannot_connect"
                 )
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug("Reauth broker check failed", exc_info=True)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Reauth broker check failed: %s", error_kind(err))
                 errors["base"] = "cannot_connect"
             else:
                 # Only the credentials change; host stays what the entry uses.

@@ -126,6 +126,19 @@ def log_identifier(value) -> str:
     return "#" + hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
 
 
+def error_kind(error: BaseException) -> str:
+    """What went wrong, without what the library said about it.
+
+    Library messages quote what they were given - a TLS failure spells out the
+    hostname it rejected - so only the class and, where one exists, the
+    machine-readable reason survive. The cause chain keeps the full text for
+    anyone debugging with the exception in hand.
+    """
+    reason = getattr(error, "reason", None) or getattr(error, "errno", None)
+    name = type(error).__name__
+    return f"{name}({reason})" if reason else name
+
+
 def masked_topic(topic) -> str:
     """The same, for a topic: the host is the middle segment and only that.
 

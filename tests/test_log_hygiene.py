@@ -19,7 +19,7 @@ PACKAGE = pathlib.Path(__file__).parents[1] / "custom_components/faikout"
 IDENTIFYING = frozenset({"host", "_host", "topic", "device_id", "mac", "_mac"})
 
 # Passing one of the above is fine as the argument of these.
-MASKS = frozenset({"log_identifier", "masked_topic"})
+MASKS = frozenset({"log_identifier", "masked_topic", "error_kind"})
 
 LOG_LEVELS = frozenset({"debug", "info", "warning", "error", "exception", "critical"})
 
@@ -60,6 +60,17 @@ def _reaches_a_log(call: ast.Call) -> bool:
     return is_logger_call or is_logged_exception
 
 
+def _caught_exceptions(function: ast.AST) -> set[str]:
+    """Names bound by `except ... as name`. Their text is somebody else's -
+    a TLS failure spells out the hostname it rejected - so it may not be
+    interpolated into anything that reaches a log."""
+    return {
+        node.name
+        for node in ast.walk(function)
+        if isinstance(node, ast.ExceptHandler) and node.name
+    }
+
+
 def _assignments(function: ast.AST) -> dict[str, ast.AST]:
     """Simple `name = value` assignments in a function, last one wins."""
     values: dict[str, ast.AST] = {}
@@ -95,13 +106,29 @@ def _offenders(module: pathlib.Path) -> list[str]:
         if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         assignments = _assignments(scope)
+        caught = _caught_exceptions(scope)
         for call in ast.walk(scope):
             if not isinstance(call, ast.Call) or not _reaches_a_log(call):
                 continue
+            if any(keyword.arg == "exc_info" for keyword in call.keywords):
+                # The traceback prints every message in the chain, ours and
+                # the library's alike.
+                found.append(f"{module.name}:{call.lineno} logs a traceback")
             for argument in _message_parts(call, assignments):
+                if _is_masked(argument):
+                    continue
                 names = _identifying_names(argument)
-                if names and not _is_masked(argument):
+                if names:
                     found.append(f"{module.name}:{call.lineno} passes {sorted(names)}")
+                interpolated = {
+                    node.id
+                    for node in ast.walk(argument)
+                    if isinstance(node, ast.Name) and node.id in caught
+                }
+                if interpolated:
+                    found.append(
+                        f"{module.name}:{call.lineno} interpolates {sorted(interpolated)}"
+                    )
     return found
 
 
