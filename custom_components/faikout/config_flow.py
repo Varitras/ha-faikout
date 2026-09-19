@@ -352,6 +352,18 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 class FaikoutOptionsFlow(OptionsFlow):
     """Options: update throttle and an optional own MQTT client."""
 
+    def _password_to_store(self, submitted: dict) -> str:
+        """Credentials are a pair. The form never shows the stored password, so
+        a blank field beside a username means it is unchanged; clearing the
+        username is how an anonymous broker is configured, and takes the
+        password with it."""
+        typed = submitted.get(CONF_MQTT_PASSWORD, "")
+        if typed:
+            return typed
+        if not submitted.get(CONF_MQTT_USERNAME):
+            return ""
+        return self.config_entry.options.get(CONF_MQTT_PASSWORD, "")
+
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
@@ -370,6 +382,7 @@ class FaikoutOptionsFlow(OptionsFlow):
                     cleaned[CONF_MQTT_HOST] = cleaned[CONF_MQTT_HOST].strip()
                 if CONF_MQTT_PORT in cleaned:
                     cleaned[CONF_MQTT_PORT] = int(cleaned[CONF_MQTT_PORT])
+                cleaned[CONF_MQTT_PASSWORD] = self._password_to_store(cleaned)
                 return self.async_create_entry(data=cleaned)
 
         o = self.config_entry.options
@@ -407,9 +420,11 @@ class FaikoutOptionsFlow(OptionsFlow):
                     CONF_MQTT_USERNAME,
                     default=o.get(CONF_MQTT_USERNAME, ""),
                 ): selector.TextSelector(),
+                # No default on purpose: the schema is serialised into the form
+                # response, so a default would hand the stored password to the
+                # browser. Blank means "unchanged"; see _password_to_store.
                 vol.Optional(
-                    CONF_MQTT_PASSWORD,
-                    default=o.get(CONF_MQTT_PASSWORD, ""),
+                    CONF_MQTT_PASSWORD, default=""
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(
                         type=selector.TextSelectorType.PASSWORD
