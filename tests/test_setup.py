@@ -159,6 +159,20 @@ async def test_led_switch_disabled_by_default(hass):
     assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
 
 
+async def test_a_quantity_that_cannot_be_negative_rejects_a_negative_value(hass):
+    """The action logic already treats a negative frequency as no reading;
+    the sensor must not hand -1 Hz to automations while the climate entity
+    ignores it. Temperatures stay allowed below zero."""
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"comp": -1, "outside": -5}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"sensor.{TEST_HOST}_compressor").state == "unknown"
+    assert hass.states.get(f"sensor.{TEST_HOST}_outside_temperature").state == "-5"
+
+
 async def test_sensors_from_both_topics(hass):
     await setup_integration(hass, make_transport())
 

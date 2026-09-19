@@ -14,6 +14,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_HOST,
     CONF_MAC,
+    CONF_MQTT_CLEAR_PASSWORD,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -28,6 +29,7 @@ from .const import (
     DOMAIN,
     device_id_for,
     effective_port,
+    error_kind,
     is_valid_host,
     normalize_mac,
 )
@@ -241,12 +243,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                     broker[CONF_MQTT_TLS_INSECURE],
                 )
             except MqttConnectionRefused as err:
-                _LOGGER.debug("Broker refused the connection", exc_info=True)
+                _LOGGER.debug("Broker refused the connection: %s", error_kind(err))
                 errors["base"] = (
                     "invalid_auth" if err.is_auth_failure else "cannot_connect"
                 )
-            except Exception:  # noqa: BLE001 - any other connect problem
-                _LOGGER.debug("Broker discovery failed", exc_info=True)
+            except Exception as err:  # noqa: BLE001 - any other connect problem
+                _LOGGER.debug("Broker discovery failed: %s", error_kind(err))
                 errors["base"] = "cannot_connect"
             else:
                 self._broker = broker
@@ -283,8 +285,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = (
                     "invalid_auth" if err.is_auth_failure else "cannot_connect"
                 )
-            except Exception:  # noqa: BLE001
-                _LOGGER.debug("Reauth broker check failed", exc_info=True)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Reauth broker check failed: %s", error_kind(err))
                 errors["base"] = "cannot_connect"
             else:
                 # Only the credentials change; host stays what the entry uses.
@@ -352,6 +354,22 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 class FaikoutOptionsFlow(OptionsFlow):
     """Options: update throttle and an optional own MQTT client."""
 
+    def _password_to_store(self, submitted: dict) -> str:
+        """Credentials are a pair, and the form never shows the stored password.
+
+        No username means no password, whatever was typed. With a username, a
+        blank field means unchanged, and removing the password is its own
+        action - there is nothing on the form to delete otherwise.
+        """
+        if not submitted.get(CONF_MQTT_USERNAME):
+            return ""
+        if submitted.get(CONF_MQTT_CLEAR_PASSWORD):
+            return ""
+        typed = submitted.get(CONF_MQTT_PASSWORD, "")
+        if typed:
+            return typed
+        return self.config_entry.options.get(CONF_MQTT_PASSWORD, "")
+
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
@@ -370,6 +388,8 @@ class FaikoutOptionsFlow(OptionsFlow):
                     cleaned[CONF_MQTT_HOST] = cleaned[CONF_MQTT_HOST].strip()
                 if CONF_MQTT_PORT in cleaned:
                     cleaned[CONF_MQTT_PORT] = int(cleaned[CONF_MQTT_PORT])
+                cleaned[CONF_MQTT_PASSWORD] = self._password_to_store(cleaned)
+                cleaned.pop(CONF_MQTT_CLEAR_PASSWORD, None)  # an action, not a setting
                 return self.async_create_entry(data=cleaned)
 
         o = self.config_entry.options
@@ -407,14 +427,19 @@ class FaikoutOptionsFlow(OptionsFlow):
                     CONF_MQTT_USERNAME,
                     default=o.get(CONF_MQTT_USERNAME, ""),
                 ): selector.TextSelector(),
+                # No default on purpose: the schema is serialised into the form
+                # response, so a default would hand the stored password to the
+                # browser. Blank means "unchanged"; see _password_to_store.
                 vol.Optional(
-                    CONF_MQTT_PASSWORD,
-                    default=o.get(CONF_MQTT_PASSWORD, ""),
+                    CONF_MQTT_PASSWORD, default=""
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(
                         type=selector.TextSelectorType.PASSWORD
                     )
                 ),
+                vol.Optional(
+                    CONF_MQTT_CLEAR_PASSWORD, default=False
+                ): selector.BooleanSelector(),
                 vol.Optional(
                     CONF_MQTT_TLS, default=o.get(CONF_MQTT_TLS, False)
                 ): selector.BooleanSelector(),

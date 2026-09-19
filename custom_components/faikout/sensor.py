@@ -43,6 +43,10 @@ class FaikoutSensorDescription(SensorEntityDescription):
 
     factor: float = 1.0
     source: str = "status"
+    # Below this the value is not a reading of this quantity at all. A
+    # frequency, a power or a byte count has no negative half; a temperature
+    # or a signal strength does, and leaves this unset.
+    minimum: float | None = None
 
 
 def _temp(key: str) -> FaikoutSensorDescription:
@@ -64,6 +68,7 @@ def _energy(key: str, translation_key: str) -> FaikoutSensorDescription:
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
         factor=0.001,
+        minimum=0,
     )
 
 
@@ -86,37 +91,41 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
     _temp("outside"),
     _temp("inlet"),
     _temp("liquid"),
-    SensorEntityDescription(
+    FaikoutSensorDescription(
         key="hum",
         translation_key="humidity",
         device_class=SensorDeviceClass.HUMIDITY,
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
-    SensorEntityDescription(
+    FaikoutSensorDescription(
         key="consumption",
         translation_key="power",
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
     _energy("Whoutside", "energy_total"),
     _energy("Whheating", "energy_heating"),
     _energy("Whcooling", "energy_cooling"),
     # /status carries unit-STABLE speeds regardless of the hafanrpm/hacomprpm
     # device setting (verified live): fanrpm is always RPM, comp always Hz.
-    SensorEntityDescription(
+    FaikoutSensorDescription(
         key="fanrpm",
         translation_key="fan_speed",
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
-    SensorEntityDescription(
+    FaikoutSensorDescription(
         key="comp",
         translation_key="compressor",
         device_class=SensorDeviceClass.FREQUENCY,
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
     # From the bare state/<host> topic (device_meta), not /status.
     FaikoutSensorDescription(
@@ -137,6 +146,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         entity_registry_enabled_default=False,
+        minimum=0,
     ),
     _diag(
         "mqtt-up",
@@ -144,6 +154,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         entity_registry_enabled_default=False,
+        minimum=0,
     ),
     _diag(
         "mem",
@@ -151,6 +162,7 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         device_class=SensorDeviceClass.DATA_SIZE,
         native_unit_of_measurement=UnitOfInformation.BYTES,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
     _diag(
         "spi",
@@ -158,12 +170,14 @@ DESCRIPTIONS: list[SensorEntityDescription] = [
         device_class=SensorDeviceClass.DATA_SIZE,
         native_unit_of_measurement=UnitOfInformation.BYTES,
         state_class=SensorStateClass.MEASUREMENT,
+        minimum=0,
     ),
     _diag(
         "flash",
         "flash",
         device_class=SensorDeviceClass.DATA_SIZE,
         native_unit_of_measurement=UnitOfInformation.BYTES,
+        minimum=0,
     ),
     _diag("chan", "wifi_channel"),
     _diag("rst", "reset_reason"),
@@ -245,6 +259,9 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
             value = as_number(raw)
             if value is None:
                 return self._rejected(raw)
+            minimum = getattr(self.entity_description, "minimum", None)
+            if minimum is not None and value < minimum:
+                return self._rejected(raw)
             factor = getattr(self.entity_description, "factor", 1.0)
             return value if factor == 1.0 else round(value * factor, 3)
         if isinstance(raw, (dict, list)):
@@ -262,5 +279,11 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         )
 
     def _rejected(self, raw):
-        _LOGGER.debug("Ignoring unusable %s: %r", self.entity_description.key, raw)
+        # The type says what went wrong; the value could be a network name or
+        # an address in a field that merely failed to parse.
+        _LOGGER.debug(
+            "Ignoring unusable %s of type %s",
+            self.entity_description.key,
+            type(raw).__name__,
+        )
         return

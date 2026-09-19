@@ -24,6 +24,7 @@ from .const import (
     as_bool,
     control_topic,
     device_metadata,
+    error_kind,
     log_identifier,
     masked_topic,
     merge_state,
@@ -117,7 +118,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             # coming up (common on a restart), which would otherwise leave this
             # entry permanently in SETUP_ERROR until reloaded by hand.
             raise ConfigEntryNotReady(
-                f"Cannot subscribe to the topics for {self.host}: {err}"
+                f"Cannot subscribe to the topics for {log_identifier(self.host)}: {error_kind(err)}"
             ) from err
 
     @callback
@@ -227,13 +228,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         base = self._pending if self._pending is not None else self.data
         new_state = merge_state(base, payload)
         if new_state is None:
-            # Truncated: the payload is untrusted and can be large, and the
-            # log is not the place to reproduce it in full.
+            # Size only, never the content: the payload is untrusted, and even
+            # its first characters can carry an address or a network name.
             _LOGGER.warning(
-                "Ignoring unparseable state on %s: %.80r%s",
+                "Ignoring unparseable state on %s (%d characters)",
                 masked_topic(msg.topic),
-                payload,
-                "..." if len(payload) > 80 else "",
+                len(payload),
             )
             return
         self._pending = new_state
@@ -307,7 +307,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             raise
         except Exception as err:
             raise HomeAssistantError(
-                f"Failed to send {fields} to {self.host}: {err}"
+                f"Failed to send {fields} to {log_identifier(self.host)}: {error_kind(err)}"
             ) from err
 
     async def async_shutdown(self) -> None:

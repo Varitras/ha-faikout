@@ -437,6 +437,14 @@ def test_hvac_action_ignores_a_bool_compressor_value():
     assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": False}) == "cooling"
 
 
+def test_hvac_action_ignores_a_negative_compressor_frequency():
+    """Below zero is not a frequency the compressor can run at. Read as a
+    number it compares as "not running" and the unit shows idle while nothing
+    says it is; it has to count as no reading instead."""
+    assert const.hvac_action_from_state({"power": True, "mode": "C", "comp": -1}) == "cooling"
+    assert const.hvac_action_from_state({"power": True, "mode": "A", "comp": -1}) is None
+
+
 @pytest.mark.parametrize("comp", [float("nan"), float("inf"), float("-inf")])
 def test_hvac_action_ignores_a_non_finite_compressor_value(comp):
     """json.loads accepts NaN and Infinity, and neither can be compared.
@@ -598,3 +606,22 @@ def test_masked_topic_survives_something_that_is_not_a_topic():
     """The topic comes off the wire, so it is not necessarily well formed."""
     assert "nonsense" not in const.masked_topic("nonsense")
     assert const.masked_topic("") == "<unset>"
+
+
+def test_error_kind_keeps_the_reason_and_drops_the_text():
+    """A library message quotes what it was given - a TLS check names the
+    hostname it rejected. The kind and a machine-readable reason are enough."""
+    import ssl
+
+    tls = ssl.SSLCertVerificationError("hostname 'broker.invalid' doesn't match")
+    assert "broker.invalid" not in const.error_kind(tls)
+    assert const.error_kind(tls).startswith("SSLCertVerificationError")
+    assert const.error_kind(ConnectionRefusedError(111, "refused")) == "ConnectionRefusedError(111)"
+    assert const.error_kind(TimeoutError()) == "TimeoutError"
+
+    class Refused(Exception):
+        def __init__(self):
+            super().__init__("Broker refused: 5")
+            self.reason_code = 5
+
+    assert const.error_kind(Refused()) == "Refused(5)"

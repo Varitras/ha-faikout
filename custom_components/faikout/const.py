@@ -47,6 +47,9 @@ CONF_MQTT_HOST = "mqtt_host"
 CONF_MQTT_PORT = "mqtt_port"
 CONF_MQTT_USERNAME = "mqtt_username"
 CONF_MQTT_PASSWORD = "mqtt_password"
+# An action on the options form, never stored: the form cannot show the
+# stored password to be deleted, so removing it needs a signal of its own.
+CONF_MQTT_CLEAR_PASSWORD = "mqtt_clear_password"
 # Encrypt the connection to an own broker. Off by default, because a broker on
 # the LAN commonly has no usable certificate.
 CONF_MQTT_TLS = "mqtt_tls"
@@ -124,6 +127,23 @@ def log_identifier(value) -> str:
     if not text:
         return "<unset>"
     return "#" + hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
+
+
+def error_kind(error: BaseException) -> str:
+    """What went wrong, without what the library said about it.
+
+    Library messages quote what they were given - a TLS failure spells out the
+    hostname it rejected - so only the class and, where one exists, the
+    machine-readable reason survive. The cause chain keeps the full text for
+    anyone debugging with the exception in hand.
+    """
+    reason = (
+        getattr(error, "reason", None)
+        or getattr(error, "reason_code", None)
+        or getattr(error, "errno", None)
+    )
+    name = type(error).__name__
+    return f"{name}({reason})" if reason else name
 
 
 def masked_topic(topic) -> str:
@@ -275,10 +295,6 @@ def as_number(value) -> int | float | None:
     return value
 
 
-def as_temperature(value) -> int | float | None:
-    return as_number(value)
-
-
 def as_bool(value) -> bool:
     """Truthiness of a device field, tolerating a stringified boolean.
 
@@ -418,6 +434,8 @@ def hvac_action_from_state(data: dict) -> str | None:
     # compared into a sensible answer. The sensors drop them for the same
     # reason, and this path must not be the one place that lets them through.
     comp = as_number(data.get("comp"))
+    if comp is not None and comp < 0:
+        comp = None  # not a frequency a compressor can run at
     running = None if comp is None else comp > 0
     if running is False:
         return ACTION_IDLE

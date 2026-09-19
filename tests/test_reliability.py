@@ -100,6 +100,22 @@ async def test_refused_connection_raises(hass, code, expected):
     assert not transport._connected
 
 
+@pytest.mark.parametrize("code", [3, 5])
+async def test_refusal_message_names_the_port_but_not_the_broker(hass, code):
+    """Home Assistant writes this exception's text to its log on every retry
+    and on reauth, so the broker address must already be masked in it. The
+    port and the reason stay: they are what a user needs to fix it."""
+    transport = _transport(hass)
+    _answer_connack(transport, FakeReasonCode(code))
+
+    with pytest.raises((ConfigEntryNotReady, ConfigEntryAuthFailed)) as raised:
+        await transport.async_connect()
+
+    message = str(raised.value)
+    assert "broker.invalid" not in message
+    assert ":1883" in message
+
+
 async def test_connect_waits_for_connack(hass):
     """A silent broker must time out, not count as connected."""
     transport = _transport(hass)  # no CONNACK is ever delivered
@@ -486,6 +502,65 @@ async def test_discover_on_broker_refusal_is_reported(hass):
         await transport_module.async_discover_on_broker(
             hass, "broker.invalid", 1883, "u", "bad", 0
         )
+
+
+async def test_discovery_timeout_does_not_name_the_broker(hass):
+    """The config flow logs this failure; a silent broker must not put its
+    address into that line."""
+    from custom_components.faikout import transport as transport_module
+
+    class SilentClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def username_pw_set(self, *args):
+            pass
+
+        def connect(self, host, port, keepalive):
+            pass  # never answers
+
+        def subscribe(self, *args):
+            pass
+
+        def loop_start(self):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+    with (
+        patch.object(paho, "Client", SilentClient),
+        patch("custom_components.faikout.transport.CONNECT_TIMEOUT", 0.05),
+        pytest.raises(OSError) as raised,
+    ):
+        await transport_module.async_discover_on_broker(
+            hass, "broker.invalid", 1883, "u", "p", 0
+        )
+
+    assert "broker.invalid" not in str(raised.value)
+    assert ":1883" in str(raised.value)
+
+
+async def test_tls_failure_message_does_not_repeat_the_library_text(hass):
+    """A certificate check spells out the hostname it rejected. Home Assistant
+    logs this exception's text on every retry, so only the kind of failure may
+    travel, never what the library said."""
+    import ssl
+
+    transport = _tls_transport(hass)
+    transport._client.tls_set.side_effect = ssl.SSLCertVerificationError(
+        "hostname 'broker.invalid' doesn't match 'localhost'"
+    )
+
+    with pytest.raises(ConfigEntryNotReady) as raised:
+        await transport.async_connect()
+
+    message = str(raised.value)
+    assert "broker.invalid" not in message
+    assert "SSLCertVerificationError" in message
 
 
 async def test_first_state_is_not_delayed_by_the_throttle(hass):

@@ -124,7 +124,9 @@ Reachable later via *Configure* on the integration entry:
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
 - **Own MQTT client** — switch an existing entry between the two transports, with the broker details and
-  the TLS switches described above.
+  the TLS switches described above. The form never shows the stored password: leave the field blank to
+  keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
+  the username. Clearing the username removes both.
 
 ## Entities
 
@@ -149,6 +151,19 @@ or cooling. In `heat_cool` the direction cannot be determined at all and the act
 Entities are only created for the fields your module actually reports, and appear automatically when a
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
 settings if you want them.
+
+## What ends up in the log
+
+Home Assistant logs are the usual attachment to a bug report, so this integration keeps the names that
+identify your installation out of everything it writes: module host names, the broker address and the
+MQTT topics carrying them appear as a short stable digest (`state/#3204c9cb/status`), rejected values
+are described by field and type rather than reproduced, and a module going away or coming back is one
+line each way at info level.
+
+What is outside its control is naming. The config entry, the device and every entity id are derived
+from the module host you chose, and Home Assistant uses those names in its own messages - setup and
+retry lines name the entry, and warnings about a slow or misbehaving entity name the entity id. Rename
+the entry and the device if the host should not appear there either.
 
 ## Known limitations
 

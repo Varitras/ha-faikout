@@ -41,6 +41,7 @@ from .const import (
     MAX_DISCOVERED_HOSTS,
     MAX_PAYLOAD_CHARS,
     effective_port,
+    error_kind,
     log_identifier,
     masked_topic,
 )
@@ -262,7 +263,8 @@ class OwnMqttTransport(FaikoutTransport):
                 await self.hass.async_add_executor_job(self._setup_tls)
             except Exception as err:
                 raise ConfigEntryNotReady(
-                    f"Cannot set up TLS for {self._host}:{self._port}: {err}"
+                    f"Cannot set up TLS for {log_identifier(self._host)}:{self._port}: "
+                    f"{error_kind(err)}"
                 ) from err
         self._connack = self.hass.loop.create_future()
         try:
@@ -271,7 +273,8 @@ class OwnMqttTransport(FaikoutTransport):
             )
         except OSError as err:
             raise ConfigEntryNotReady(
-                f"Cannot connect to MQTT broker {self._host}:{self._port}: {err}"
+                f"Cannot connect to MQTT broker {log_identifier(self._host)}:{self._port}: "
+                f"{error_kind(err)}"
             ) from err
         self._client.loop_start()
 
@@ -281,14 +284,14 @@ class OwnMqttTransport(FaikoutTransport):
         except TimeoutError as err:
             await self.async_stop()
             raise ConfigEntryNotReady(
-                f"No CONNACK from MQTT broker {self._host}:{self._port} "
+                f"No CONNACK from MQTT broker {log_identifier(self._host)}:{self._port} "
                 f"within {CONNECT_TIMEOUT}s"
             ) from err
 
         if _is_failure(reason_code):
             await self.async_stop()
             message = (
-                f"MQTT broker {self._host}:{self._port} refused the connection: "
+                f"MQTT broker {log_identifier(self._host)}:{self._port} refused the connection: "
                 f"{reason_code}"
             )
             if getattr(reason_code, "value", reason_code) in AUTH_FAILURE_CODES:
@@ -376,7 +379,7 @@ class OwnMqttTransport(FaikoutTransport):
             # Most commonly MQTT_ERR_NO_CONN. Raising makes the service call
             # fail visibly instead of pretending the device got the command.
             raise HomeAssistantError(
-                f"Could not publish to {topic}: "
+                f"Could not publish to {masked_topic(topic)}: "
                 f"{self._paho.error_string(info.rc)} (rc={info.rc})"
             )
 
@@ -460,7 +463,7 @@ async def async_discover_on_broker(
         client.loop_start()
         try:
             if not connected.wait(CONNECT_TIMEOUT):
-                raise OSError(f"No CONNACK from {host}:{port}")
+                raise OSError(f"No CONNACK from {log_identifier(host)}:{port}")
             reason_code = result.get("reason_code")
             if _is_failure(reason_code):
                 raise MqttConnectionRefused(reason_code)

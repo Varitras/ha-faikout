@@ -13,6 +13,7 @@ from custom_components.faikout.const import (  # noqa: E402
     CONF_DEVICE_ID,
     CONF_HOST,
     CONF_MAC,
+    CONF_MQTT_CLEAR_PASSWORD,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -285,6 +286,135 @@ async def test_options_flow_requires_host_for_own_mqtt(hass):
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_MQTT_HOST: "host_required"}
+
+
+def _entry_with_credentials(hass) -> MockConfigEntry:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST},
+        options={
+            CONF_UPDATE_INTERVAL: 0,
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USERNAME: "faikout",
+            CONF_MQTT_PASSWORD: "stored-secret",
+        },
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+def _schema_default(result, key) -> object:
+    """What the form would prefill: the schema's default for one field."""
+    for marker in result["data_schema"].schema:
+        if marker == key:
+            default = marker.default
+            return default() if callable(default) else default
+    raise AssertionError(f"{key} is not in the form")
+
+
+async def test_options_form_does_not_hand_the_stored_password_to_the_browser(hass):
+    """The schema is serialised into the form response, defaults included."""
+    entry = _entry_with_credentials(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert _schema_default(result, CONF_MQTT_USERNAME) == "faikout"
+    assert _schema_default(result, CONF_MQTT_PASSWORD) != "stored-secret"
+
+
+async def test_options_flow_keeps_the_stored_password_when_left_empty(hass):
+    """Credentials are a pair: a blank password beside the same username means
+    "unchanged", not "none" - the form no longer shows the old one to re-type."""
+    entry = _entry_with_credentials(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_UPDATE_INTERVAL: 0,
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USERNAME: "faikout",
+            CONF_MQTT_PASSWORD: "",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MQTT_PASSWORD] == "stored-secret"
+
+
+async def test_options_flow_can_clear_only_the_password(hass):
+    """A username without a password is a configuration paho accepts, and the
+    form cannot show the stored password to be deleted - so clearing it is an
+    explicit action of its own."""
+    entry = _entry_with_credentials(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_UPDATE_INTERVAL: 0,
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USERNAME: "faikout",
+            CONF_MQTT_PASSWORD: "",
+            CONF_MQTT_CLEAR_PASSWORD: True,
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MQTT_USERNAME] == "faikout"
+    assert result["data"][CONF_MQTT_PASSWORD] == ""
+    assert CONF_MQTT_CLEAR_PASSWORD not in result["data"], "an action, not a setting"
+
+
+async def test_options_flow_never_stores_a_password_without_a_username(hass):
+    """The form says clearing the username removes both; the code has to mean it
+    even when a password was typed in the same edit."""
+    entry = _entry_with_credentials(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_UPDATE_INTERVAL: 0,
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USERNAME: "",
+            CONF_MQTT_PASSWORD: "typed-anyway",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MQTT_PASSWORD] == ""
+
+
+async def test_options_flow_drops_the_password_with_the_username(hass):
+    """Clearing the username is the way to an anonymous broker."""
+    entry = _entry_with_credentials(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_UPDATE_INTERVAL: 0,
+            CONF_USE_OWN_MQTT: True,
+            CONF_MQTT_HOST: "10.0.0.5",
+            CONF_MQTT_PORT: 1883,
+            CONF_MQTT_USERNAME: "",
+            CONF_MQTT_PASSWORD: "",
+        },
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_MQTT_USERNAME] == ""
+    assert result["data"][CONF_MQTT_PASSWORD] == ""
 
 
 # --- re-authentication --------------------------------------------------------
