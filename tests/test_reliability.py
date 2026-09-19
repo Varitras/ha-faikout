@@ -100,6 +100,22 @@ async def test_refused_connection_raises(hass, code, expected):
     assert not transport._connected
 
 
+@pytest.mark.parametrize("code", [3, 5])
+async def test_refusal_message_names_the_port_but_not_the_broker(hass, code):
+    """Home Assistant writes this exception's text to its log on every retry
+    and on reauth, so the broker address must already be masked in it. The
+    port and the reason stay: they are what a user needs to fix it."""
+    transport = _transport(hass)
+    _answer_connack(transport, FakeReasonCode(code))
+
+    with pytest.raises((ConfigEntryNotReady, ConfigEntryAuthFailed)) as raised:
+        await transport.async_connect()
+
+    message = str(raised.value)
+    assert "broker.invalid" not in message
+    assert ":1883" in message
+
+
 async def test_connect_waits_for_connack(hass):
     """A silent broker must time out, not count as connected."""
     transport = _transport(hass)  # no CONNACK is ever delivered

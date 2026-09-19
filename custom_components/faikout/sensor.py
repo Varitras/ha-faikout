@@ -262,5 +262,11 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         )
 
     def _rejected(self, raw):
-        _LOGGER.debug("Ignoring unusable %s: %r", self.entity_description.key, raw)
+        # The type says what went wrong; the value could be a network name or
+        # an address in a field that merely failed to parse.
+        _LOGGER.debug(
+            "Ignoring unusable %s of type %s",
+            self.entity_description.key,
+            type(raw).__name__,
+        )
         return

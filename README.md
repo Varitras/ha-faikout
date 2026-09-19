@@ -150,6 +150,18 @@ Entities are only created for the fields your module actually reports, and appea
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
 settings if you want them.
 
+## What ends up in the log
+
+Home Assistant logs are the usual attachment to a bug report, so this integration keeps the names that
+identify your installation out of everything it writes: module host names, the broker address and the
+MQTT topics carrying them appear as a short stable digest (`state/#3204c9cb/status`), rejected values
+are described by field and type rather than reproduced, and a module going away or coming back is one
+line each way at info level.
+
+One thing is outside its control: Home Assistant itself names the config entry in its own setup and
+retry messages, and the entry is named after the module host you chose. Rename the entry if that name
+should not appear there either.
+
 ## Known limitations
 
 - **The LED switch is disabled by default.** On S21 units a LED-only command does not trigger a frame to
