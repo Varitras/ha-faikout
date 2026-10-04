@@ -14,8 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  pytest:
-    name: pytest (${{ matrix.label }})
+  check:
+    # The same check.sh the pre-push hook runs, so a gate added there cannot
+    # be missing here. Only the Home Assistant version differs per lane.
+    name: check.sh (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       # Both rows should always report; one failing must not hide the other.
@@ -29,13 +31,11 @@ jobs:
           - label: current HA 2026.9
             python-version: "3.14"
             phcc: "==0.13.363"
-            coverage: "--cov=custom_components/faikout --cov-fail-under=90"
           # Newest release including betas. Advisory: it warns about upcoming
           # breakage without letting a Home Assistant prerelease block a fix.
           - label: upcoming HA (advisory)
             python-version: "3.14"
             phcc: ""
-            coverage: ""
             advisory: true
           # Guards the minimum version claimed in hacs.json and the README.
           # Each pytest-homeassistant-custom-component release pins exactly one
@@ -46,41 +46,25 @@ jobs:
           - label: minimum HA 2026.8
             python-version: "3.14"
             phcc: "==0.13.354"
-            coverage: ""
     continue-on-error: ${{ matrix.advisory == true }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install test dependencies
+      - name: Install check dependencies
         run: |
           python -m pip install --upgrade pip
           # pytest-homeassistant-custom-component pulls in a matching
           # homeassistant and provides the `hass` fixture the integration tests
           # need; paho-mqtt is needed for the own-MQTT transport test.
           pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}" paho-mqtt
-          pip install pytest-cov
+          pip install pytest-cov ruff mypy vulture
       - name: Show versions under test
         run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
-      - name: Run tests
-        # The floor sits below the current figure on purpose: it is there to
-        # catch untested new code, not to make every refactor a coverage debate.
-        run: python -m pytest -q ${{ matrix.coverage }}
-
-  lint:
-    name: lint (ruff)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-      - run: pip install ruff
-      # Only the linter, deliberately not `ruff format --check`: adopting the
-      # formatter would reflow nearly every file at once, which buries real
-      # changes in churn without making anything clearer.
-      - run: ruff check .
+      - run: ./check.sh
+        env:
+          PYTHON: python
 
   hassfest:
     name: hassfest (manifest validation)

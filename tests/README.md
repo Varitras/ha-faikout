@@ -25,6 +25,8 @@ The full suite needs Home Assistant's test machinery, which imports `fcntl` and
 therefore does not run natively on Windows — use WSL2 there. Without it, the
 Home Assistant tests skip themselves and the pure ones still run.
 
+CI runs the same script, once per Home Assistant lane.
+
 ## The pre-push hook is local
 
 `.git/hooks/pre-push` runs `check.sh`, a blocklist over the push range and
