@@ -18,7 +18,7 @@ step() { printf '\n== %s ==\n' "$1"; }
 
 # No `ruff format --check`: the code is written to 100 columns and adopting the
 # formatter would reflow every file without making anything clearer. The linter
-# alone is the deliberate choice here, and the CI lint job matches it.
+# alone is the deliberate choice here.
 step "ruff check"
 "$PYTHON" -m ruff check .
 
