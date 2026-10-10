@@ -1,7 +1,7 @@
 #!/bin/sh
 # Definition of done, as one command.
 #
-#   PYTHON=~/ha-test/venv/bin/python ./check.sh
+#   PYTHON=~/ha-dev/faikout/venv/bin/python ./check.sh
 #
 # The interpreter arrives by environment variable so no machine-local path
 # lives in here. It needs ruff, mypy and the Home Assistant test stack, which

@@ -18,7 +18,7 @@ so a second workflow is covered the day it arrives.
 ## Running everything
 
 ```sh
-PYTHON=~/ha-test/venv/bin/python ./check.sh
+PYTHON=~/ha-dev/faikout/venv/bin/python ./check.sh
 ```
 
 The full suite needs Home Assistant's test machinery, which imports `fcntl` and
