@@ -64,9 +64,9 @@ integration does not have. Pick whichever matches what you need.
 
 ## Requirements
 
-- Home Assistant **2026.8** or newer. This is the first release providing the unambiguous device
-  registry lookup the integration uses; older releases only offer the one Home Assistant has since
-  deprecated. A CI job pinned to exactly that version keeps the claim honest.
+- Home Assistant **2026.10** or newer. The configuration dialogs are built with probatio, which
+  replaced voluptuous in Home Assistant; 2026.10 is the first release whose flow API is declared for
+  it. A CI job pinned to exactly that version keeps the claim honest.
 - Either Home Assistant's **MQTT integration** pointed at the broker your Faikout publishes to, **or** the
   broker's connection details so this integration can connect on its own.
 

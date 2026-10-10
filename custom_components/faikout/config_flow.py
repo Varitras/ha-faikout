@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import voluptuous as vol
+import probatio
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
@@ -55,31 +55,31 @@ def _broker_from_input(user_input: dict) -> dict:
     }
 
 
-def _broker_schema(defaults=None) -> vol.Schema:
+def _broker_schema(defaults=None) -> probatio.Schema:
     """Broker connection form, shared by initial setup and re-authentication."""
     d = defaults or {}
-    return vol.Schema(
+    return probatio.Schema(
         {
-            vol.Required(
-                CONF_MQTT_HOST, default=d.get(CONF_MQTT_HOST, vol.UNDEFINED)
+            probatio.Required(
+                CONF_MQTT_HOST, default=d.get(CONF_MQTT_HOST, probatio.UNDEFINED)
             ): selector.TextSelector(),
-            vol.Optional(
+            probatio.Optional(
                 CONF_MQTT_PORT, default=d.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
                 )
             ),
-            vol.Optional(
+            probatio.Optional(
                 CONF_MQTT_USERNAME, default=d.get(CONF_MQTT_USERNAME, "")
             ): selector.TextSelector(),
-            vol.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
+            probatio.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
             ),
-            vol.Optional(
+            probatio.Optional(
                 CONF_MQTT_TLS, default=d.get(CONF_MQTT_TLS, False)
             ): selector.BooleanSelector(),
-            vol.Optional(
+            probatio.Optional(
                 CONF_MQTT_TLS_INSECURE,
                 default=d.get(CONF_MQTT_TLS_INSECURE, False),
             ): selector.BooleanSelector(),
@@ -217,8 +217,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered = await self._discover_hosts()
         return self.async_show_form(
             step_id="ha_mqtt",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_HOST): _host_selector(self._discovered)}
+            data_schema=probatio.Schema(
+                {probatio.Required(CONF_HOST): _host_selector(self._discovered)}
             ),
             errors=errors,
         )
@@ -329,8 +329,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="own_host",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_HOST): _host_selector(self._discovered)}
+            data_schema=probatio.Schema(
+                {probatio.Required(CONF_HOST): _host_selector(self._discovered)}
             ),
             errors=errors,
         )
@@ -393,9 +393,9 @@ class FaikoutOptionsFlow(OptionsFlow):
                 return self.async_create_entry(data=cleaned)
 
         o = self.config_entry.options
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(
+                probatio.Required(
                     CONF_UPDATE_INTERVAL,
                     default=o.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
                 ): selector.NumberSelector(
@@ -407,15 +407,15 @@ class FaikoutOptionsFlow(OptionsFlow):
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),
-                vol.Required(
+                probatio.Required(
                     CONF_USE_OWN_MQTT,
                     default=o.get(CONF_USE_OWN_MQTT, False),
                 ): selector.BooleanSelector(),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_HOST,
                     default=o.get(CONF_MQTT_HOST, ""),
                 ): selector.TextSelector(),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_PORT,
                     default=o.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT),
                 ): selector.NumberSelector(
@@ -423,27 +423,27 @@ class FaikoutOptionsFlow(OptionsFlow):
                         min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
                     )
                 ),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_USERNAME,
                     default=o.get(CONF_MQTT_USERNAME, ""),
                 ): selector.TextSelector(),
                 # No default on purpose: the schema is serialised into the form
                 # response, so a default would hand the stored password to the
                 # browser. Blank means "unchanged"; see _password_to_store.
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_PASSWORD, default=""
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(
                         type=selector.TextSelectorType.PASSWORD
                     )
                 ),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_CLEAR_PASSWORD, default=False
                 ): selector.BooleanSelector(),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_TLS, default=o.get(CONF_MQTT_TLS, False)
                 ): selector.BooleanSelector(),
-                vol.Optional(
+                probatio.Optional(
                     CONF_MQTT_TLS_INSECURE,
                     default=o.get(CONF_MQTT_TLS_INSECURE, False),
                 ): selector.BooleanSelector(),
