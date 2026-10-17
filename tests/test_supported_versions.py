@@ -57,20 +57,25 @@ def test_every_action_is_pinned_or_a_known_moving_ref():
     assert not unpinned, f"not pinned to a version or an allowed moving ref: {unpinned}"
 
 
-def test_the_claimed_minimum_provides_the_registry_api_we_call():
+def test_the_claimed_minimum_provides_what_the_code_relies_on():
     """The floor is not a number we picked - it is the release that has the API.
 
-    The coordinator looks a device up by identifier and config entry, which
-    only exists from the claimed minimum onwards. Running against anything
-    older has to fail here rather than at the first metadata update.
+    2026.10 is the first release whose flow API is typed for probatio; 2026.9
+    ships probatio but still declares voluptuous schemas, so mypy fails there.
+    The coordinator also looks a device up by identifier and config entry,
+    which exists from 2026.8. Running against anything older has to fail here
+    rather than in a type check nobody reads or at the first metadata update.
     """
     pytest.importorskip("homeassistant")
+    import inspect
+
+    from homeassistant.data_entry_flow import FlowHandler
     from homeassistant.helpers.device_registry import DeviceRegistry
 
-    assert hasattr(DeviceRegistry, "async_get_device_by_identifier"), (
-        f"the installed Home Assistant is older than the claimed minimum "
-        f"{_claimed_minimum()}"
-    )
+    too_old = f"the installed Home Assistant is older than the claimed minimum {_claimed_minimum()}"
+    schema_type = inspect.signature(FlowHandler.async_show_form).parameters["data_schema"]
+    assert "probatio" in str(schema_type.annotation), too_old
+    assert hasattr(DeviceRegistry, "async_get_device_by_identifier"), too_old
 
 
 def test_every_tool_check_sh_runs_is_pinned_for_ci():

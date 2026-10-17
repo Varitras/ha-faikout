@@ -8,7 +8,7 @@ it holds.
 |---|---|
 | `test_supported_versions.py::test_minimum_version_is_the_one_a_ci_lane_installs` | hacs.json may only claim a minimum some CI lane really installs |
 | `test_supported_versions.py::test_readme_states_the_same_minimum` | the README names the same minimum as hacs.json |
-| `test_supported_versions.py::test_the_claimed_minimum_provides_the_registry_api_we_call` | that minimum really provides the device registry API the coordinator calls |
+| `test_supported_versions.py::test_the_claimed_minimum_provides_what_the_code_relies_on` | that minimum really types its forms for probatio and has the device registry lookup the coordinator calls |
 | `test_supported_versions.py::test_every_action_is_pinned_or_a_known_moving_ref` | every workflow action is version-pinned, bar two deliberate moving refs |
 | `test_supported_versions.py::test_workflow_directory_is_not_empty` | the guard above actually found files to scan |
 | `test_supported_versions.py::test_every_tool_check_sh_runs_is_pinned_for_ci` | every tool check.sh runs is pinned for CI, so a tool release cannot turn CI red unannounced |
