@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
@@ -138,11 +139,18 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         await self.coordinator.async_send_control(power=False)
 
     async def async_set_temperature(self, **kwargs) -> None:
+        # One command for both: the service may carry a mode, and Home Assistant
+        # validates it only on set_hvac_mode, not here.
+        command = {}
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+        if hvac_mode is not None:
+            self._valid_mode_or_raise("hvac", hvac_mode, self.hvac_modes)
+            command |= const.build_hvac_mode_command(hvac_mode)
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is not None:
-            await self.coordinator.async_send_control(
-                **const.build_temperature_command(temp)
-            )
+            command |= const.build_temperature_command(temp)
+        if command:
+            await self.coordinator.async_send_control(**command)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         await self.coordinator.async_send_control(**const.build_fan_command(fan_mode))
