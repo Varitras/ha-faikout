@@ -299,7 +299,7 @@ def test_device_metadata_truncates_text_fields():
 
 
 def test_default_update_interval_coalesces():
-    """Default is a throttle, not real-time: 10s, and 0 stays available."""
+    """Default is a throttle, not real-time: 10s."""
     assert const.DEFAULT_UPDATE_INTERVAL == 10
 
 
@@ -388,7 +388,7 @@ def test_action_cooling_when_compressor_runs():
 
 
 def test_action_without_compressor_field_falls_back_to_mode():
-    """Older payloads have no comp; behaviour must not regress to unknown."""
+    """CN_WIRED and X50A never report comp; the mode must still name the action."""
     assert const.hvac_action_from_state({"power": True, "mode": "C"}) == "cooling"
 
 

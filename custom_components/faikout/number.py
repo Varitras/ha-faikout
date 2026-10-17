@@ -27,8 +27,8 @@ async def async_setup_entry(
 
     @callback
     def _add_new() -> None:
-        # Created the first time the field appears, like the other platforms, so
-        # a model that does not report demand simply has no entity.
+        # Created the first time the field appears, like sensors and switches,
+        # so a model that does not report demand simply has no entity.
         nonlocal added
         if not added and "demand" in (coordinator.data or {}):
             added = True

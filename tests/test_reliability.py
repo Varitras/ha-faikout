@@ -148,6 +148,8 @@ async def test_successful_publish_is_silent(hass):
         "Info", (), {"rc": paho.MQTT_ERR_SUCCESS}
     )()
     await transport.async_publish("command/x/control", "{}")
+    # Exactly topic and payload: paho's defaults are QoS 0 and not retained.
+    transport._client.publish.assert_called_once_with("command/x/control", "{}")
 
 
 async def test_service_call_reports_publish_failure(hass):
@@ -372,7 +374,7 @@ async def test_paho_message_reaches_the_callback_on_the_event_loop(hass):
 
 async def test_options_change_reloads_the_entry(hass):
     """Changing the update interval must actually take effect."""
-    from custom_components.faikout.const import CONF_UPDATE_INTERVAL
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL, CONF_USE_OWN_MQTT
 
     first = make_transport()
     entry = await setup_integration(hass, first)
@@ -381,8 +383,9 @@ async def test_options_change_reloads_the_entry(hass):
     with patch(
         "custom_components.faikout.create_transport", return_value=second
     ):
-        hass.config_entries.async_update_entry(
-            entry, options={CONF_UPDATE_INTERVAL: 30}
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_UPDATE_INTERVAL: 30, CONF_USE_OWN_MQTT: False}
         )
         await hass.async_block_till_done()
 
@@ -415,16 +418,21 @@ async def test_throttle_keeps_only_the_latest_of_several_updates(hass):
     from custom_components.faikout.const import CONF_UPDATE_INTERVAL
 
     transport = make_transport()
-    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 60})
+    entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 60})
+    # The end state alone cannot tell one flush from two: count them.
+    pushes = []
+    entry.runtime_data.async_add_listener(lambda: pushes.append(None))
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 24}))
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 25}))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+    assert not pushes
 
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=61))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).attributes["temperature"] == 25
+    assert len(pushes) == 1
 
 
 async def test_discover_on_broker_collects_macs_and_cleans_up(hass):
@@ -505,8 +513,8 @@ async def test_discover_on_broker_refusal_is_reported(hass):
 
 
 async def test_discovery_timeout_does_not_name_the_broker(hass):
-    """The config flow logs this failure; a silent broker must not put its
-    address into that line."""
+    """The message travels with the exception to whatever logs it later; a
+    silent broker must not put its address into it."""
     from custom_components.faikout import transport as transport_module
 
     class SilentClient:
@@ -726,6 +734,8 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     transport = make_transport()
     entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
     coordinator = entry.runtime_data
+    pushes = []
+    coordinator.async_add_listener(lambda: pushes.append(None))
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 26}))
     await hass.async_block_till_done()
@@ -734,7 +744,74 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
     assert coordinator._flush_unsub is None, "the stale timer was left armed"
+    assert len(pushes) == 1, "the availability change was not pushed at once"
 
     # And it really does not fire later.
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=31))
     await hass.async_block_till_done()
+    assert len(pushes) == 1, "the cancelled timer still pushed"
+
+
+async def test_a_failed_publish_through_home_assistant_does_not_name_the_host(hass):
+    """Home Assistant's own publish error quotes the topic, hostname included.
+
+    Passed on as it was, a script engine logged it at ERROR with the host in
+    clear text.
+    """
+    from custom_components.faikout.transport import HaMqttTransport
+
+    async def _refuse(hass, topic, payload):
+        raise HomeAssistantError(f'Cannot publish to topic "{topic}"')
+
+    transport = HaMqttTransport(hass)
+    with (
+        patch("custom_components.faikout.transport.mqtt.async_publish", _refuse),
+        pytest.raises(HomeAssistantError) as raised,
+    ):
+        await transport.async_publish("command/SecretHostXYZ/control", "{}")
+
+    assert "SecretHostXYZ" not in str(raised.value)
+    assert raised.value.translation_key == "publish_failed"
+
+
+async def test_a_failed_command_tells_the_ui_what_happened(hass):
+    """The UI translates by key; without one it can only show the English text."""
+    transport = make_transport()
+
+    async def _boom(topic, payload):
+        raise RuntimeError("socket gone")
+
+    await setup_integration(hass, transport)
+    transport.async_publish = _boom
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await hass.services.async_call(
+            "climate", "turn_off", {"entity_id": CLIMATE}, blocking=True
+        )
+
+    assert raised.value.translation_key == "send_failed"
+    assert TEST_HOST not in str(raised.value)
+
+
+@pytest.mark.parametrize("step", ["tls", "connect"])
+async def test_a_setup_failure_does_not_carry_the_broker_in_its_cause(hass, step):
+    """Home Assistant logs a failed setup's traceback at debug level.
+
+    The message was masked, but the chained cause was the library's own text:
+    a certificate issued for another name spells out the broker it rejected.
+    """
+    import traceback
+
+    leak = OSError("certificate is not valid for 'secret-broker.lan'")
+    transport = _tls_transport(hass)
+    if step == "tls":
+        transport._client.tls_set.side_effect = leak
+    else:
+        transport._client.connect.side_effect = leak
+
+    with pytest.raises(ConfigEntryNotReady) as raised:
+        await transport.async_connect()
+
+    logged = "".join(traceback.format_exception(raised.value))
+    assert "secret-broker" not in logged
+

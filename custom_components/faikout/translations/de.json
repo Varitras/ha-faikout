@@ -18,14 +18,14 @@
       },
       "own_mqtt": {
         "title": "MQTT-Broker",
-        "description": "Verbindungsdaten des Brokers, auf den der Faikout sendet. Die Integration verbindet sich direkt damit. Mit TLS wird der Port auf 8883 gesetzt, sofern du keinen eigenen angibst.",
+        "description": "Verbindungsdaten des Brokers, auf den der Faikout sendet. Die Integration verbindet sich direkt damit. Mit TLS wird aus dem Standardport 1883 der Port 8883; jeder andere Port bleibt.",
         "data": {
           "mqtt_host": "Broker-Host",
           "mqtt_port": "Port",
           "mqtt_username": "Benutzername",
           "mqtt_password": "Passwort",
           "mqtt_tls": "TLS verwenden (verschlüsselte Verbindung)",
-          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsigniert)"
+          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsignierten Zertifikaten)"
         }
       },
       "own_host": {
@@ -44,7 +44,7 @@
           "mqtt_username": "Benutzername",
           "mqtt_password": "Passwort",
           "mqtt_tls": "TLS verwenden (verschlüsselte Verbindung)",
-          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsigniert)"
+          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsignierten Zertifikaten)"
         }
       }
     },
@@ -56,7 +56,9 @@
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
       "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
-      "reauth_successful": "Neuanmeldung erfolgreich."
+      "module_renamed": "Das Modul wurde umbenannt. Der bestehende Eintrag folgt jetzt dem neuen Namen.",
+      "rename_other_broker": "Dieses Modul ist als {old} über einen anderen Broker eingerichtet. Ist es auf diesen Broker umgezogen, den bestehenden Eintrag in seinen Optionen auf diesen Broker umstellen und erneut versuchen.",
+      "rename_old_name_still_announced": "Dieses Modul meldet sich mit derselben MAC als {old} und als {new}. Läuft es jetzt als {new}, die gespeicherten (retained) Nachrichten auf state/{old} löschen und erneut versuchen. Läuft es noch als {old}, ist nichts zu tun."
     }
   },
   "options": {
@@ -65,13 +67,13 @@
         "title": "Faikout-Optionen",
         "data": {
           "update_interval": "Update-Intervall (Sekunden, 0 = jede Nachricht)",
-          "use_own_mqtt": "Eigenen MQTT-Client verwenden (separater Broker)",
+          "use_own_mqtt": "Separaten MQTT-Client verwenden (eigener Broker)",
           "mqtt_host": "MQTT-Broker-Host",
           "mqtt_port": "MQTT-Port",
           "mqtt_username": "MQTT-Benutzername",
           "mqtt_password": "MQTT-Passwort",
           "mqtt_tls": "TLS verwenden (verschlüsselte Verbindung)",
-          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsigniert)",
+          "mqtt_tls_insecure": "Zertifikat nicht prüfen (nötig bei selbstsignierten Zertifikaten)",
           "mqtt_clear_password": "Gespeichertes Passwort entfernen"
         },
         "data_description": {
@@ -80,7 +82,9 @@
       }
     },
     "error": {
-      "host_required": "Bitte den Broker-Host angeben, wenn ein eigener MQTT-Client genutzt wird."
+      "host_required": "Bitte den Broker-Host angeben, wenn ein separater MQTT-Client genutzt wird.",
+      "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen.",
+      "invalid_auth": "Benutzername oder Passwort für diesen Broker ist falsch."
     }
   },
   "entity": {
@@ -194,6 +198,41 @@
       "demand": {
         "name": "Anforderung"
       }
+    },
+    "climate": {
+      "faikout": {
+        "state_attributes": {
+          "fan_mode": {
+            "state": {
+              "auto": "Auto",
+              "quiet": "Leise"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "subscribe_failed": {
+      "message": "Die Topics für {device} lassen sich nicht abonnieren: {reason}"
+    },
+    "send_failed": {
+      "message": "{command} konnte nicht an {device} gesendet werden: {reason}"
+    },
+    "publish_failed": {
+      "message": "Senden an {topic} fehlgeschlagen: {reason}"
+    },
+    "tls_setup_failed": {
+      "message": "TLS für {broker} lässt sich nicht einrichten: {reason}"
+    },
+    "broker_unreachable": {
+      "message": "Keine Verbindung zum MQTT-Broker {broker}: {reason}"
+    },
+    "broker_no_answer": {
+      "message": "Keine Antwort vom MQTT-Broker {broker} innerhalb von {seconds} s"
+    },
+    "broker_refused": {
+      "message": "Der MQTT-Broker {broker} hat die Verbindung abgelehnt: {reason}"
     }
   }
 }

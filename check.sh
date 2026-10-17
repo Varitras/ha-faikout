@@ -1,13 +1,14 @@
 #!/bin/sh
 # Definition of done, as one command.
 #
-#   PYTHON=~/ha-dev/faikout/venv/bin/python ./check.sh
+#   PYTHON=.venv/bin/python ./check.sh
 #
 # The interpreter arrives by environment variable so no machine-local path
-# lives in here. It needs ruff, mypy and the Home Assistant test stack, which
-# on Windows means WSL: Home Assistant's test machinery imports fcntl.
-# Stops at the first failure; a gate that cannot run says so instead of
-# waving the run through.
+# lives in here. It needs the tools in requirements-ci.txt and the Home
+# Assistant test stack, which on Windows means WSL: Home Assistant's test
+# machinery imports fcntl.
+# Stops at the first failure. A gate whose tool is missing fails too: a skipped
+# gate under "All gates green" is a promise the run did not keep.
 set -eu
 cd "$(dirname "$0")"
 
@@ -29,13 +30,9 @@ step "pytest"
 "$PYTHON" -m pytest tests/ --cov="$PACKAGE" --cov-fail-under=90
 
 step "dead code (vulture)"
-if "$PYTHON" -c "import vulture" 2>/dev/null; then
-    # The ignored names are parameters fixed by someone else's contract:
-    # entry_data is how Home Assistant calls async_step_reauth, the rest is
-    # the positional signature paho hands its thread callbacks.
-    "$PYTHON" -m vulture "$PACKAGE" --min-confidence 90 --ignore-names "entry_data,userdata,flags,properties,args"
-else
-    echo "SKIPPED: vulture not installed - dead parallel stacks stay invisible"
-fi
+# The ignored names are parameters fixed by someone else's contract:
+# entry_data is how Home Assistant calls async_step_reauth, the rest is
+# the positional signature paho hands its thread callbacks.
+"$PYTHON" -m vulture "$PACKAGE" --min-confidence 90 --ignore-names "entry_data,userdata,flags,properties,args"
 
 printf '\nAll gates green.\n'

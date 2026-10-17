@@ -8,6 +8,7 @@ pytest.importorskip("pytest_homeassistant_custom_component.common")
 
 from homeassistant.config_entries import ConfigEntryState  # noqa: E402
 from homeassistant.const import STATE_UNAVAILABLE  # noqa: E402
+from homeassistant.exceptions import ServiceValidationError  # noqa: E402
 
 from custom_components.faikout.const import (  # noqa: E402
     CONF_UPDATE_INTERVAL,
@@ -27,7 +28,6 @@ async def test_setup_and_unload(hass):
 
     assert entry.state is ConfigEntryState.LOADED
     assert transport.connected
-    # Both the /status and the bare state topic must be subscribed.
     assert set(transport.subs) == {status_topic(TEST_HOST), state_topic(TEST_HOST)}
 
     assert await hass.config_entries.async_unload(entry.entry_id)
@@ -270,7 +270,6 @@ async def test_update_interval_throttles_pushes(hass, freezer):
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 25}))
     await hass.async_block_till_done()
-    # Throttled: not visible yet.
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
 
     from homeassistant.util import dt as dt_util
@@ -345,7 +344,6 @@ async def test_heartbeat_meta_does_not_drop_diagnostics(hass):
     )
     await hass.async_block_till_done()
 
-    # diagnostics from the earlier full status must survive
     assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
 
 
@@ -528,7 +526,13 @@ async def test_oversized_payload_is_dropped_before_decoding(hass):
     await setup_integration(hass, transport)
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
 
-    huge = ('{"temp": 30, "pad": "' + "x" * MAX_PAYLOAD_CHARS + '"}').encode()
+    class ExplodingPayload(bytes):
+        # Same size either way, so only a payload that refuses to be decoded
+        # can tell "measured first" from "decoded, then measured".
+        def decode(self, *args, **kwargs):
+            raise AssertionError("payload was decoded before its size was checked")
+
+    huge = ExplodingPayload(('{"temp": 30, "pad": "' + "x" * MAX_PAYLOAD_CHARS + '"}').encode())
     transport.feed(status_topic(TEST_HOST), huge)
     await hass.async_block_till_done()
 
@@ -611,3 +615,73 @@ async def test_timestamp_sensor_survives_extreme_values(hass, raw):
     )
     # the rest of the entity keeps working
     assert hass.states.get(CLIMATE).state == "heat"
+
+
+async def test_set_temperature_with_hvac_mode_sets_the_mode_too(hass):
+    """The climate service contract lets set_temperature carry a mode.
+
+    Dropping it published only the setpoint: `{temperature: 23, hvac_mode: off}`
+    from a schedule left the unit running and reported success.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "temperature": 23, "hvac_mode": "cool"},
+        blocking=True,
+    )
+    assert transport.last_command == {"temp": 23, "power": True, "mode": "C"}
+
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "temperature": 23, "hvac_mode": "off"},
+        blocking=True,
+    )
+    assert transport.last_command == {"temp": 23, "power": False}
+
+    published = len(transport.published)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "climate",
+            "set_temperature",
+            {"entity_id": CLIMATE, "temperature": 23, "hvac_mode": "auto"},
+            blocking=True,
+        )
+    assert len(transport.published) == published
+
+
+async def test_module_diagnostics_stay_available_when_the_indoor_unit_is_lost(hass):
+    """The module reports its network data itself, not through the indoor unit.
+
+    Tying them to /status made the IP address and signal disappear exactly
+    when someone needs them to diagnose a lost indoor unit.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(status_topic(TEST_HOST), json.dumps({"online": False}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+    assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
+
+    transport.feed(state_topic(TEST_HOST), "false")
+    await hass.async_block_till_done()
+    assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize("offline", [json.dumps({"online": False}), "false"])
+async def test_indoor_unit_going_offline_is_not_delayed_by_the_throttle(hass, offline):
+    """Availability bypasses the throttle on the status topic as well.
+
+    Only the module topic did; a lost indoor unit kept showing stale values as
+    live for up to the whole update interval.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
+    transport.feed(status_topic(TEST_HOST), offline)
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE

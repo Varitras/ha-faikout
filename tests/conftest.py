@@ -1,6 +1,7 @@
 """Shared test fixtures.
 
-The pure tests (test_const.py) need nothing but the import path. The Home
+The pure tests (test_const, test_translations, test_log_hygiene and most of
+test_supported_versions) need nothing but the import path. The Home
 Assistant tests additionally need pytest-homeassistant-custom-component; they
 are skipped wholesale when it is unavailable, so the pure suite still runs
 standalone on a machine without Home Assistant.

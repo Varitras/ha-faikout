@@ -88,14 +88,14 @@ The config flow first asks **how** Home Assistant should reach the module:
 | Choice | Use when |
 |---|---|
 | **Home Assistant's MQTT integration** | your Faikout publishes to the broker HA is already connected to |
-| **An own MQTT broker** | the Faikout lives on a different broker than HA's MQTT client |
+| **Your own MQTT broker** | the Faikout lives on a different broker than HA's MQTT client |
 
 Either way the integration then listens briefly on `state/+` and offers the modules it found. You can also
 type the hostname by hand — it is the middle part of the topics, the `GuestAC` in `state/GuestAC`.
 
 #### TLS
 
-The own-broker mode can encrypt the connection. Two switches, because they are not the same decision:
+With your own MQTT broker, the connection can be encrypted. Two switches, because they are not the same decision:
 
 - **Use TLS** — encrypts the connection. The port moves to 8883 unless you set a different one. The one
   exception is 8883's counterpart: a deliberately entered `1883` cannot be told apart from the untouched
@@ -123,7 +123,7 @@ Reachable later via *Configure* on the integration entry:
   The module reports on every change, which for a running unit is more often than most people need and
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
-- **Own MQTT client** — switch an existing entry between the two transports, with the broker details and
+- **Use a separate MQTT client** — switch an existing entry between the two transports, with the broker details and
   the TLS switches described above. The form never shows the stored password: leave the field blank to
   keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
   the username. Clearing the username removes both.
@@ -195,23 +195,35 @@ the entry and the device if the host should not appear there either.
 
 The device↔Home Assistant logic lives in `const.py` and imports no Home Assistant code, so it is unit
 tested standalone. On top of that, the config flow, coordinator and entities are tested against a real
-Home Assistant core with a fake MQTT transport — no broker required.
+Home Assistant core with a fake MQTT transport, and the default transport through Home Assistant's own
+MQTT integration — no broker required.
 
 ```bash
 python -m venv .venv
+. .venv/bin/activate
 pip install -r requirements-test.txt
-pip install pytest-homeassistant-custom-component paho-mqtt   # for the full suite
+pip install pytest-homeassistant-custom-component   # for the full suite
 pytest -q
+```
+
+`check.sh` runs everything a change has to pass — ruff, mypy, the tests with a coverage floor and
+vulture — and needs those tools in the same environment:
+
+```bash
+pip install -r requirements-ci.txt
+PYTHON=.venv/bin/python ./check.sh
 ```
 
 The Home Assistant tests are Linux/macOS only — HA's test machinery imports `fcntl`. They skip themselves
 elsewhere, so the pure suite still runs on Windows; use WSL2 there to run everything.
 
-CI runs the suite against both the current and the minimum supported Home Assistant, plus `hassfest`.
+CI runs `check.sh` against the current and the minimum supported Home Assistant, and against the
+newest release, betas included, as an advisory lane that may fail, plus `hassfest` and the HACS
+validation.
 
 ## Credits
 
-The [ESP32-Faikin](https://codeberg.org/RevK/ESP32-Faikout) firmware and hardware are by RevK. This
+The [ESP32-Faikout](https://codeberg.org/RevK/ESP32-Faikout) firmware and hardware are by RevK. This
 integration is an independent Home Assistant client for it and is not affiliated with that project or
 with Daikin.
 

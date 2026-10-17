@@ -1,15 +1,15 @@
 pytest>=8.0
 
-# Optional: install `homeassistant` as well to additionally run
-# tests/test_imports.py, which imports the HA-dependent modules to catch
-# API breakage. Those tests skip automatically when homeassistant is not
-# installed, so the pure tests/test_const.py suite always runs standalone.
-#   pip install homeassistant
+# Optional: install `homeassistant` and `paho-mqtt` as well to additionally run
+# tests/test_imports.py, which imports the HA-dependent modules to catch API
+# breakage (Home Assistant's MQTT integration imports paho). Those tests skip
+# automatically when homeassistant is not installed, so the pure suite always
+# runs standalone.
+#   pip install homeassistant paho-mqtt
 #
 # The full suite (config flow, coordinator, entities against a real Home
-# Assistant core) additionally needs the `hass` fixture, plus paho-mqtt for the
-# own-MQTT transport test:
-#   pip install pytest-homeassistant-custom-component paho-mqtt
+# Assistant core) additionally needs the `hass` fixture, which brings both:
+#   pip install pytest-homeassistant-custom-component
 #
 # That part is Linux/macOS only — Home Assistant's test machinery imports fcntl
 # and cannot run natively on Windows. Use WSL2 there.

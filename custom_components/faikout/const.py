@@ -31,15 +31,16 @@ CONF_MAC = "mac"
 DISCOVERY_TOPIC = "state/+"
 
 # Option: throttle how often incoming MQTT updates are pushed into HA entities.
-# 0 = real-time (every message). N>0 = at most one update per N seconds
-# (the latest value is always flushed). Purely HA-side; does not touch the device.
+# 0 = real-time (every message). N>0 = at most one update per N seconds (the
+# latest value is always flushed; availability changes bypass it). Purely
+# HA-side; does not touch the device.
 CONF_UPDATE_INTERVAL = "update_interval"
 # Default to coalescing updates into one push per 10s. The module reports on
 # every change, which for a running AC is far more often than anyone needs and
 # writes a row to the recorder each time. Set 0 for every message.
 DEFAULT_UPDATE_INTERVAL = 10
 
-# Option: use an own MQTT client (connect directly to a broker) instead of the
+# Option: use a separate MQTT client (connect directly to a broker) instead of the
 # shared Home Assistant MQTT integration. Useful when the Faikout lives on a
 # different broker than HA's MQTT client.
 CONF_USE_OWN_MQTT = "use_own_mqtt"
@@ -50,7 +51,7 @@ CONF_MQTT_PASSWORD = "mqtt_password"
 # An action on the options form, never stored: the form cannot show the
 # stored password to be deleted, so removing it needs a signal of its own.
 CONF_MQTT_CLEAR_PASSWORD = "mqtt_clear_password"
-# Encrypt the connection to an own broker. Off by default, because a broker on
+# Encrypt the connection to your own broker. Off by default, because a broker on
 # the LAN commonly has no usable certificate.
 CONF_MQTT_TLS = "mqtt_tls"
 # Accept any certificate. Needed for the self-signed certificate brokers ship
@@ -134,8 +135,8 @@ def error_kind(error: BaseException) -> str:
 
     Library messages quote what they were given - a TLS failure spells out the
     hostname it rejected - so only the class and, where one exists, the
-    machine-readable reason survive. The cause chain keeps the full text for
-    anyone debugging with the exception in hand.
+    machine-readable reason survive. Errors built from it are raised ``from
+    None``: a logged traceback would print the cause, library text and all.
     """
     reason = (
         getattr(error, "reason", None)
@@ -273,7 +274,7 @@ def fan_ha_to_dev(mode: str) -> str:
     return str(mode)
 
 
-# --- Swing ------------------------------------------------------------------
+# --- Value coercion ---------------------------------------------------------
 def as_number(value) -> int | float | None:
     """A device value usable as a number, or None.
 
@@ -306,6 +307,7 @@ def as_bool(value) -> bool:
     return bool(value)
 
 
+# --- Swing ------------------------------------------------------------------
 SWING_OFF = "off"
 SWING_ON = "on"
 # Home Assistant models the two axes separately: SWING_MODE is the vertical
@@ -358,7 +360,8 @@ def device_metadata(meta: dict) -> dict:
 
     That topic carries ``app`` (product), ``version`` (firmware), ``build-suffix``
     (hardware variant) and ``id`` (MAC). ``/status`` does not, so device info is
-    sourced from here. Missing keys yield ``None``.
+    sourced from here. Missing keys yield ``None``, except the model, which
+    falls back to "Faikout".
     """
     def _text(value):
         # These end up in the persisted device registry, so they are truncated
@@ -483,7 +486,7 @@ def merge_state(current: dict | None, payload: str) -> dict | None:
     """Merge a raw MQTT payload into the current state dict.
 
     Returns the new dict, or None if unparseable/ignored. A bare
-    'true'/'false' is the module presence (LWT/birth).
+    'true'/'false' sets ``online``.
     """
     data = dict(current or {})
     if payload in ("true", "false"):

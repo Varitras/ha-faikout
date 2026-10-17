@@ -1,0 +1,7 @@
+# The tools check.sh runs besides the tests, pinned: a release that adds rules
+# would otherwise turn CI red without any change in this repository. Dependabot
+# raises them monthly, so a new rule arrives as its own pull request.
+mypy==2.4.0
+pytest-cov==7.1.0
+ruff==0.17.0
+vulture==2.16

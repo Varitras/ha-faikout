@@ -49,6 +49,13 @@ def _decoded(payload) -> str | None:
         return payload.decode(errors="replace")
     return payload
 
+
+def _indoor_unit_online(state: dict | None) -> bool:
+    """Whether a status dict says the module still reaches the indoor unit."""
+    if not state:
+        return False
+    return as_bool(state.get("online", True))
+
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
 
@@ -84,8 +91,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self.transport_online = True
         transport.set_connection_listener(self._transport_connection_changed)
         transport.set_auth_failure_listener(self._auth_failed)
-        # Update throttle: 0 = real-time; N>0 = push to HA at most every N seconds
-        # (latest value always flushed via a trailing timer).
+        # Update throttle: 0 = real-time; N>0 = at most one push per N seconds,
+        # the latest value flushed by a trailing timer. Availability bypasses it.
         self._min_interval = 0.0
         self._pending: dict | None = None
         # None = nothing pushed yet. Must not start at 0.0: loop.time() is a
@@ -94,6 +101,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # back for a whole interval.
         self._last_push: float | None = None
         self._flush_unsub: Callable[[], None] | None = None
+
+    @property
+    def indoor_unit_online(self) -> bool:
+        return _indoor_unit_online(self.data)
 
     @callback
     def set_update_interval(self, seconds) -> None:
@@ -109,17 +120,21 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             self._unsub_meta = await self._transport.async_subscribe(
                 state_topic(self.host), self._meta_received
             )
-        except ConfigEntryNotReady:
-            raise
         except Exception as err:
+            if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
+                raise  # ours, masked already
             # Home Assistant only retries a config entry with backoff when setup
             # raises ConfigEntryNotReady. HA's own mqtt.async_subscribe raises a
             # plain HomeAssistantError while its broker connection is still
             # coming up (common on a restart), which would otherwise leave this
             # entry permanently in SETUP_ERROR until reloaded by hand.
+            device, reason = log_identifier(self.host), error_kind(err)
             raise ConfigEntryNotReady(
-                f"Cannot subscribe to the topics for {log_identifier(self.host)}: {error_kind(err)}"
-            ) from err
+                f"Cannot subscribe to the topics for {device}: {reason}",
+                translation_domain=DOMAIN,
+                translation_key="subscribe_failed",
+                translation_placeholders={"device": device, "reason": reason},
+            ) from None
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:
@@ -237,10 +252,14 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             )
             return
         self._pending = new_state
-        # Only a real JSON state (not a bare presence "true"/"false") satisfies
+        # Only a real JSON state (not a bare "true"/"false") satisfies
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
+        if _indoor_unit_online(new_state) != self.indoor_unit_online:
+            # Same rule as the module topic: availability never waits.
+            self._flush()
+            return
         self._maybe_push()
 
     @callback
@@ -303,12 +322,20 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             await self._transport.async_publish(
                 control_topic(self.host), json.dumps(fields)
             )
-        except HomeAssistantError:
-            raise
         except Exception as err:
+            if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
+                raise  # ours, masked already
+            device, reason = log_identifier(self.host), error_kind(err)
             raise HomeAssistantError(
-                f"Failed to send {fields} to {log_identifier(self.host)}: {error_kind(err)}"
-            ) from err
+                f"Failed to send {fields} to {device}: {reason}",
+                translation_domain=DOMAIN,
+                translation_key="send_failed",
+                translation_placeholders={
+                    "command": str(fields),
+                    "device": device,
+                    "reason": reason,
+                },
+            ) from None
 
     async def async_shutdown(self) -> None:
         if self._unsub is not None:

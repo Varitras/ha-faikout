@@ -8,17 +8,39 @@ it holds.
 |---|---|
 | `test_supported_versions.py::test_minimum_version_is_the_one_a_ci_lane_installs` | hacs.json may only claim a minimum some CI lane really installs |
 | `test_supported_versions.py::test_readme_states_the_same_minimum` | the README names the same minimum as hacs.json |
-| `test_supported_versions.py::test_the_claimed_minimum_provides_the_registry_api_we_call` | that minimum really provides the device registry API the coordinator calls |
+| `test_supported_versions.py::test_the_installed_home_assistant_meets_the_claimed_minimum` | the Home Assistant a lane installs is at least the claimed minimum |
+| `test_supported_versions.py::test_versions_compare_as_numbers` | the guard above compares versions as numbers, not text |
 | `test_supported_versions.py::test_every_action_is_pinned_or_a_known_moving_ref` | every workflow action is version-pinned, bar two deliberate moving refs |
 | `test_supported_versions.py::test_workflow_directory_is_not_empty` | the guard above actually found files to scan |
+| `test_supported_versions.py::test_every_tool_check_sh_runs_is_pinned_for_ci` | every tool check.sh runs is pinned for CI, so a tool release cannot turn CI red unannounced |
+| `test_log_hygiene.py::test_nothing_identifying_reaches_a_log_in_the_clear` | logger calls and exception messages in the forms its docstring lists carry no host, MAC or topic unmasked |
+| `test_log_hygiene.py::test_the_package_has_modules_to_scan` | the guard above actually found modules to scan |
+| `test_log_hygiene.py::test_guard_resolves_the_assignment_in_force_at_the_raise` | the guard follows a variable to the value it holds at the raise |
+| `test_log_hygiene.py::test_guard_reports_each_form_it_once_missed` | every logging and raising form the guard once missed stays caught |
+| `test_log_hygiene.py::test_guard_accepts_masked_values_in_every_form` | the counter-check: masked values in those forms pass |
+| `test_translations.py::test_every_language_has_the_same_keys` | every language ships the same strings as English |
+| `test_translations.py::test_every_raised_translation_key_exists_with_its_placeholders` | an error the code raises has its text and placeholders in every language |
+| `test_translations.py::test_the_code_raises_translated_errors` | the guard above actually found raise sites to check |
+| `test_translations.py::test_the_quiet_fan_step_is_translated` | the device's own fan step has a name in every language |
+| `test_translations.py::test_every_form_error_and_abort_reason_has_its_text` | every error and abort reason a flow shows has its text in every language |
+| `test_translations.py::test_no_form_error_or_abort_text_is_left_unused` | no flow error or abort text outlives the code that showed it |
+| `test_translations.py::test_the_flows_show_keys_to_check` | the two guards above actually found flow keys to check |
+| `test_translations.py::test_the_flow_key_guard_refuses_forms_it_cannot_read` | the flow forms the key guard does not read (AbortFlow, unique-id mismatch, errors under another name, inline or changed by a method) stop it instead of passing silently |
+| `test_translations.py::test_the_flow_key_guard_reads_the_common_forms` | the key guard reads errors built as a dict and the other common abort forms |
+| `test_supported_versions.py::test_every_guard_is_in_this_index` | every test in the guard modules is listed here |
+| `conftest.py::no_deprecated_home_assistant_call` (autouse) | any call Home Assistant reports as deprecated fails the test that made it |
 
-None of them may be pinned to a single file: they scan the workflow directory,
-so a second workflow is covered the day it arrives.
+The workflow, log and translation-completeness guards scan their whole
+directory, so a new file is covered the day it arrives. The others read named
+files: README and hacs.json, check.sh and requirements-ci.txt, config_flow.py
+(flow keys), climate.py and const.py (quiet fan step), this index and the guard
+modules - or the installed Home Assistant. The guards' self-tests read synthetic
+snippets.
 
 ## Running everything
 
 ```sh
-PYTHON=~/ha-dev/faikout/venv/bin/python ./check.sh
+PYTHON=.venv/bin/python ./check.sh
 ```
 
 The full suite needs Home Assistant's test machinery, which imports `fcntl` and

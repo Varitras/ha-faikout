@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
@@ -28,7 +29,8 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     """A Faikout air conditioner."""
 
     _attr_name = None  # primary entity → uses device name
-    _enable_turn_on_off_backwards_compatibility = False
+    # Hangs the translation of the device's own fan steps (quiet) on this entity.
+    _attr_translation_key = "faikout"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode(m) for m in const.HVAC_MODES]
     _attr_min_temp = const.TEMP_MIN
@@ -52,8 +54,6 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         )
         if "fan" in self._data:
             features |= ClimateEntityFeature.FAN_MODE
-        # any(), not the tuple itself: a two-element tuple is always truthy,
-        # so testing it directly advertised swing on units without any axis.
         vertical, horizontal = self._swing_axes
         if vertical:
             features |= ClimateEntityFeature.SWING_MODE
@@ -138,11 +138,18 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         await self.coordinator.async_send_control(power=False)
 
     async def async_set_temperature(self, **kwargs) -> None:
+        # One command for both: the service may carry a mode, and Home Assistant
+        # validates it only on set_hvac_mode, not here.
+        command: dict[str, object] = {}
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+        if hvac_mode is not None:
+            self._valid_mode_or_raise("hvac", hvac_mode, self.hvac_modes)
+            command |= const.build_hvac_mode_command(hvac_mode)
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is not None:
-            await self.coordinator.async_send_control(
-                **const.build_temperature_command(temp)
-            )
+            command |= const.build_temperature_command(temp)
+        if command:
+            await self.coordinator.async_send_control(**command)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         await self.coordinator.async_send_control(**const.build_fan_command(fan_mode))
