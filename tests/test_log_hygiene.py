@@ -485,6 +485,29 @@ def f(self):
     except OSError as err:
         raise ConfigEntryNotReady(error_kind(err)) from err
 ''',
+    "foreign error kept as context": '''
+def f(self):
+    try:
+        connect()
+    except OSError as err:
+        raise ConfigEntryNotReady(error_kind(err))
+''',
+    "origin check inverted": '''
+def f(self):
+    try:
+        publish()
+    except HomeAssistantError as err:
+        if err.translation_domain != DOMAIN:
+            raise
+''',
+    "origin check that only tests presence": '''
+def f(self):
+    try:
+        publish()
+    except HomeAssistantError as err:
+        if err.translation_domain:
+            raise
+''',
 }
 
 

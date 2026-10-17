@@ -169,9 +169,11 @@ def _strings(node, scope, functions, depth=0, index=None):
     return found
 
 
-def _flow_keys():
+def _flow_keys(source=None):
     """{section: {"error": keys, "abort": keys}} the flows can show."""
-    tree = ast.parse((PACKAGE / "config_flow.py").read_text(encoding="utf-8"))
+    if source is None:
+        source = (PACKAGE / "config_flow.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
     functions = _functions(tree)
     keys = {}
     for flow in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
@@ -233,3 +235,37 @@ def test_no_form_error_or_abort_text_is_left_unused(language):
             used = keys.get(section, {}).get(kind, set())
             unused = sorted(present - used)
             assert not unused, f"{language.name} {section}.{kind} has unused {unused}"
+
+
+UNREADABLE_FLOW_FORMS = {
+    "AbortFlow": """
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        raise AbortFlow("gone")
+""",
+    "unique id mismatch": """
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        self._abort_if_unique_id_mismatch()
+""",
+    "errors under another name": """
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        problems = {}
+        problems["base"] = "nope"
+        return self.async_show_form(step_id="user", errors=problems)
+""",
+    "inline errors": """
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        return self.async_show_form(step_id="user", errors={"base": "nope"})
+""",
+}
+
+
+@pytest.mark.parametrize("source", UNREADABLE_FLOW_FORMS.values(), ids=UNREADABLE_FLOW_FORMS.keys())
+def test_the_flow_key_guard_refuses_forms_it_cannot_read(source):
+    """A key it cannot see would pass silently; it has to stop instead."""
+    with pytest.raises(AssertionError, match="cannot read"):
+        _flow_keys(source)
+

@@ -955,7 +955,7 @@ async def test_a_module_found_on_another_broker_is_not_renamed(hass):
 
     result = await _pick_on_ha_mqtt(hass, {TEST_HOST: RENAMED_MAC}, TEST_HOST)
 
-    assert result["reason"] == "already_configured"
+    assert result["reason"] == "rename_other_broker"
     assert entry.data[CONF_HOST] == "old-name"
     assert entry.title == "old-name"
 
@@ -968,5 +968,18 @@ async def test_a_name_the_module_still_announces_is_not_a_rename(hass):
         hass, {"old-name": RENAMED_MAC, TEST_HOST: RENAMED_MAC}, TEST_HOST
     )
 
-    assert result["reason"] == "already_configured"
+    # Not "already configured": the user would believe the entry works.
+    assert result["reason"] == "rename_old_name_still_announced"
     assert entry.data[CONF_HOST] == "old-name"
+
+
+async def test_a_title_the_user_chose_survives_a_rename(hass):
+    entry = _entry_known_as(hass, "old-name")
+    hass.config_entries.async_update_entry(entry, title="Living room")
+
+    with patch("custom_components.faikout.async_setup_entry", return_value=True):
+        result = await _pick_on_ha_mqtt(hass, {TEST_HOST: RENAMED_MAC}, TEST_HOST)
+
+    assert result["reason"] == "module_renamed"
+    assert entry.data[CONF_HOST] == TEST_HOST
+    assert entry.title == "Living room"
