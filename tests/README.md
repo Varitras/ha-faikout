@@ -25,7 +25,8 @@ it holds.
 | `test_translations.py::test_every_form_error_and_abort_reason_has_its_text` | every error and abort reason a flow shows has its text in every language |
 | `test_translations.py::test_no_form_error_or_abort_text_is_left_unused` | no flow error or abort text outlives the code that showed it |
 | `test_translations.py::test_the_flows_show_keys_to_check` | the two guards above actually found flow keys to check |
-| `test_translations.py::test_the_flow_key_guard_refuses_forms_it_cannot_read` | a flow form the key guard cannot read stops it instead of passing silently |
+| `test_translations.py::test_the_flow_key_guard_refuses_forms_it_cannot_read` | the flow forms the key guard does not read (AbortFlow, unique-id mismatch, errors under another name, inline or changed by a method) stop it instead of passing silently |
+| `test_translations.py::test_the_flow_key_guard_reads_the_common_forms` | the key guard reads errors built as a dict and the other common abort forms |
 | `test_supported_versions.py::test_every_guard_is_in_this_index` | every test in the guard modules is listed here |
 | `conftest.py::no_deprecated_home_assistant_call` (autouse) | any call Home Assistant reports as deprecated fails the test that made it |
 
@@ -33,7 +34,8 @@ The workflow, log and translation-completeness guards scan their whole
 directory, so a new file is covered the day it arrives. The others read named
 files: README and hacs.json, check.sh and requirements-ci.txt, config_flow.py
 (flow keys), climate.py and const.py (quiet fan step), this index and the guard
-modules - or the installed Home Assistant.
+modules - or the installed Home Assistant. The guards' self-tests read synthetic
+snippets.
 
 ## Running everything
 

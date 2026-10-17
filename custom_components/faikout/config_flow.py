@@ -214,28 +214,30 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         pending = {CONF_USE_OWN_MQTT: bool(self._broker), **self._broker}
         return self._broker_id(entry.options) == self._broker_id(pending)
 
-    def _rename(self, host: str, mac) -> tuple[ConfigEntry | None, str | None]:
+    def _rename(self, host: str, mac) -> tuple[ConfigEntry | None, str | None, str]:
         """The entry to follow to a new name, or why following it is refused.
 
         Same MAC, new name: the module was renamed and its topics moved with it.
         Only on the entry's broker, though - from another broker the entry would
         keep its broker and could land on a topic another entry there controls -
         and only once the old name is no longer announced with this MAC, since a
-        retained status can outlive the rename. A refusal gets its own reason:
-        "already configured" would tell the user the entry works when it does not.
+        retained status can outlive the rename, and a stale former name looks
+        just like it. A refusal gets its own reason: "already configured" would
+        tell the user the entry works when that is exactly what is in doubt.
+        Returns the entry, the refusal and the entry's current host.
         """
         for entry in self._async_current_entries(include_ignore=False):
             if entry.unique_id != self.unique_id:
                 continue
-            old = entry.data.get(CONF_HOST)
+            old = entry.data.get(CONF_HOST, "")
             if old == host:
-                return None, None
+                return None, None, old
             if not self._same_broker(entry):
-                return None, "rename_other_broker"
+                return None, "rename_other_broker", old
             if normalize_mac(self._discovered.get(old)) == normalize_mac(mac):
-                return None, "rename_old_name_still_announced"
-            return entry, None
-        return None, None
+                return None, "rename_old_name_still_announced", old
+            return entry, None, old
+        return None, None, ""
 
     def _follow_rename(self, entry: ConfigEntry, host: str) -> ConfigFlowResult:
         # A title still equal to the old hostname was never chosen by the user,
@@ -280,9 +282,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                renamed, refused = self._rename(host, mac)
+                renamed, refused, old = self._rename(host, mac)
                 if refused is not None:
-                    return self.async_abort(reason=refused)
+                    # Both names: which one is alive the flow cannot know.
+                    return self.async_abort(
+                        reason=refused, description_placeholders={"old": old, "new": host}
+                    )
                 if renamed is not None:
                     return self._follow_rename(renamed, host)
                 self._abort_if_unique_id_configured()
@@ -359,9 +364,12 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                renamed, refused = self._rename(host, mac)
+                renamed, refused, old = self._rename(host, mac)
                 if refused is not None:
-                    return self.async_abort(reason=refused)
+                    # Both names: which one is alive the flow cannot know.
+                    return self.async_abort(
+                        reason=refused, description_placeholders={"old": old, "new": host}
+                    )
                 if renamed is not None:
                     return self._follow_rename(renamed, host)
                 self._abort_if_unique_id_configured()

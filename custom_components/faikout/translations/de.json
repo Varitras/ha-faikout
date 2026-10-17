@@ -57,8 +57,8 @@
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
       "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
       "module_renamed": "Das Modul wurde umbenannt. Der bestehende Eintrag folgt jetzt dem neuen Namen.",
-      "rename_other_broker": "Dieses Modul ist bereits über einen anderen Broker eingerichtet. Diesen Eintrag in seinen Optionen auf diesen Broker umstellen und erneut versuchen.",
-      "rename_old_name_still_announced": "Dieses Modul ist bereits unter seinem alten Namen eingerichtet, den der Broker noch ankündigt. Die gespeicherten (retained) Nachrichten auf den State-Topics des alten Namens löschen und erneut versuchen."
+      "rename_other_broker": "Dieses Modul ist als {old} über einen anderen Broker eingerichtet. Ist es auf diesen Broker umgezogen, den bestehenden Eintrag in seinen Optionen auf diesen Broker umstellen und erneut versuchen.",
+      "rename_old_name_still_announced": "Dieses Modul meldet sich mit derselben MAC als {old} und als {new}. Läuft es jetzt als {new}, die gespeicherten (retained) Nachrichten auf state/{old} löschen und erneut versuchen. Läuft es noch als {old}, ist nichts zu tun."
     }
   },
   "options": {
@@ -67,7 +67,7 @@
         "title": "Faikout-Optionen",
         "data": {
           "update_interval": "Update-Intervall (Sekunden, 0 = jede Nachricht)",
-          "use_own_mqtt": "Eigenen MQTT-Client verwenden (separater Broker)",
+          "use_own_mqtt": "Separaten MQTT-Client verwenden (eigener Broker)",
           "mqtt_host": "MQTT-Broker-Host",
           "mqtt_port": "MQTT-Port",
           "mqtt_username": "MQTT-Benutzername",
@@ -82,7 +82,7 @@
       }
     },
     "error": {
-      "host_required": "Bitte den Broker-Host angeben, wenn ein eigener MQTT-Client genutzt wird.",
+      "host_required": "Bitte den Broker-Host angeben, wenn ein separater MQTT-Client genutzt wird.",
       "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen.",
       "invalid_auth": "Benutzername oder Passwort für diesen Broker ist falsch."
     }

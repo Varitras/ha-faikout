@@ -174,6 +174,11 @@ def _flow_keys(source=None):
     if source is None:
         source = (PACKAGE / "config_flow.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
+    for node in ast.walk(tree):
+        # Anywhere, not only inside a flow: a helper raising it aborts the flow too.
+        assert not (
+            isinstance(node, ast.Call) and _callee_name(node) == "AbortFlow"
+        ), f"cannot read the keys of AbortFlow at line {node.lineno}"
     functions = _functions(tree)
     keys = {}
     for flow in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
@@ -196,8 +201,25 @@ def _flow_keys(source=None):
                         )
                         if is_error:
                             used["error"] |= _strings(node.value, method, functions)
+                if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    builds_errors = any(
+                        isinstance(t, ast.Name) and t.id == "errors" for t in targets
+                    )
+                    if builds_errors and isinstance(node.value, ast.Dict):
+                        for value in node.value.values:
+                            used["error"] |= _strings(value, method, functions)
                 callee = _callee_name(node) if isinstance(node, ast.Call) else None
-                unreadable = callee in ("AbortFlow", "_abort_if_unique_id_mismatch") or (
+                changes_errors = (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "errors"
+                )
+                unreadable = changes_errors or callee in (
+                    "AbortFlow",
+                    "_abort_if_unique_id_mismatch",
+                ) or (
                     callee == "async_show_form"
                     and any(
                         k.arg == "errors"
@@ -211,8 +233,12 @@ def _flow_keys(source=None):
                         if keyword.arg == "reason":
                             used["abort"] |= _strings(keyword.value, method, functions)
                 if callee == "_abort_if_unique_id_configured":
-                    used["abort"].add("already_configured")
-                if callee == "async_update_reload_and_abort":
+                    reasons = [k.value for k in node.keywords if k.arg == "error"]
+                    if not reasons:
+                        used["abort"].add("already_configured")
+                    for reason in reasons:
+                        used["abort"] |= _strings(reason, method, functions)
+                if callee in ("async_update_reload_and_abort", "async_update_and_abort"):
                     reasons = [k.value for k in node.keywords if k.arg == "reason"]
                     for reason in reasons:
                         used["abort"] |= _strings(reason, method, functions)

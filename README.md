@@ -123,7 +123,7 @@ Reachable later via *Configure* on the integration entry:
   The module reports on every change, which for a running unit is more often than most people need and
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
-- **Use your own MQTT client** — switch an existing entry between the two transports, with the broker details and
+- **Use a separate MQTT client** — switch an existing entry between the two transports, with the broker details and
   the TLS switches described above. The form never shows the stored password: leave the field blank to
   keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
   the username. Clearing the username removes both.

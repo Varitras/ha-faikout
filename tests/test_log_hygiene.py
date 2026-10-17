@@ -10,9 +10,13 @@ the one line being written at the time; this reads the package instead.
 What it reads: logger calls (any logger), every raised exception and every
 call to a class named like one, their positional and keyword arguments,
 f-strings, dict values and the variables they came from, and how a caught
-exception is passed on or chained. What it does not tell apart: the branches
-of an if/else (the nearest assignment above wins), class bodies, and a
-catch-all handler that cleans up and re-raises.
+exception is passed on or chained inside its handler. Identifying data is
+recognised by name (IDENTIFYING, the config keys), not by where a value came
+from. What it does not read: class bodies, values under other names (such as
+self._broker), and raises in functions called from a handler, whose implicit
+context it cannot see. What it does not tell apart: the branches of an
+if/else (the nearest assignment above wins), and a catch-all handler that
+cleans up and re-raises.
 """
 import ast
 import pathlib
@@ -235,10 +239,10 @@ def _handler_names(handler: ast.ExceptHandler) -> list[str]:
     return names
 
 
-def _is_own_domain_check(test: ast.AST) -> bool:
-    """`<x>.translation_domain == DOMAIN`, alone or as one part of an `and`."""
+def _is_own_domain_check(test: ast.AST, caught: str | None) -> bool:
+    """`<caught>.translation_domain == DOMAIN`, alone or as one part of an `and`."""
     if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
-        return any(_is_own_domain_check(value) for value in test.values)
+        return any(_is_own_domain_check(value, caught) for value in test.values)
     if not (
         isinstance(test, ast.Compare)
         and len(test.ops) == 1
@@ -248,7 +252,11 @@ def _is_own_domain_check(test: ast.AST) -> bool:
     sides = [test.left, test.comparators[0]]
     has_domain = any(isinstance(s, ast.Name) and s.id == "DOMAIN" for s in sides)
     has_origin = any(
-        isinstance(s, ast.Attribute) and s.attr == "translation_domain" for s in sides
+        isinstance(s, ast.Attribute)
+        and s.attr == "translation_domain"
+        and isinstance(s.value, ast.Name)
+        and s.value.id == caught
+        for s in sides
     )
     return has_domain and has_origin
 
@@ -261,7 +269,7 @@ def _passed_on(handler: ast.ExceptHandler) -> list[ast.Raise]:
     def visit(nodes, vetted):
         for node in nodes:
             if isinstance(node, ast.If):
-                checks_origin = _is_own_domain_check(node.test)
+                checks_origin = _is_own_domain_check(node.test, handler.name)
                 visit(node.body, vetted or checks_origin)
                 visit(node.orelse, vetted)
                 continue
