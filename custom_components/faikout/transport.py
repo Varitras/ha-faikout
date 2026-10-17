@@ -199,7 +199,7 @@ class HaMqttTransport(FaikoutTransport):
 
 
 class OwnMqttTransport(FaikoutTransport):
-    """Transport backed by an own paho MQTT client on a given broker."""
+    """Transport backed by a separate paho MQTT client on a given broker."""
 
     def __init__(
         self,
@@ -447,7 +447,7 @@ async def async_discover_on_broker(
     Returns hostname -> MAC (None when the module did not report one in the
     listening window).
 
-    Used by the config flow to discover modules on an own broker, and as the
+    Used by the config flow to discover modules on your own broker, and as the
     connection probe for reauth and options, without Home Assistant's MQTT
     integration.
     Raises OSError when the broker cannot be reached and MqttConnectionRefused

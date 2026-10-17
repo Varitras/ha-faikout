@@ -148,7 +148,7 @@ async def test_duplicate_host_aborts(hass):
     assert result["reason"] == "already_configured"
 
 
-# --- via an own broker --------------------------------------------------------
+# --- via your own broker ------------------------------------------------------
 BROKER = {
     CONF_MQTT_HOST: "10.0.0.5",
     CONF_MQTT_PORT: 1883,
@@ -639,7 +639,7 @@ async def test_home_assistant_broker_id_carries_its_tls_setting(hass):
 
     Home Assistant stores its TLS choice as the CA it validates against, not
     as a flag. Ignoring that made an encrypted HA connection compare unequal
-    to an own-client one pointing at the same endpoint.
+    to a separate client pointing at the same endpoint.
     """
     from homeassistant.config_entries import ConfigEntryState
 

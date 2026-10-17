@@ -40,7 +40,7 @@ CONF_UPDATE_INTERVAL = "update_interval"
 # writes a row to the recorder each time. Set 0 for every message.
 DEFAULT_UPDATE_INTERVAL = 10
 
-# Option: use an own MQTT client (connect directly to a broker) instead of the
+# Option: use a separate MQTT client (connect directly to a broker) instead of the
 # shared Home Assistant MQTT integration. Useful when the Faikout lives on a
 # different broker than HA's MQTT client.
 CONF_USE_OWN_MQTT = "use_own_mqtt"
@@ -51,7 +51,7 @@ CONF_MQTT_PASSWORD = "mqtt_password"
 # An action on the options form, never stored: the form cannot show the
 # stored password to be deleted, so removing it needs a signal of its own.
 CONF_MQTT_CLEAR_PASSWORD = "mqtt_clear_password"
-# Encrypt the connection to an own broker. Off by default, because a broker on
+# Encrypt the connection to your own broker. Off by default, because a broker on
 # the LAN commonly has no usable certificate.
 CONF_MQTT_TLS = "mqtt_tls"
 # Accept any certificate. Needed for the self-signed certificate brokers ship

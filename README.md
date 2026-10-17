@@ -217,8 +217,9 @@ PYTHON=.venv/bin/python ./check.sh
 The Home Assistant tests are Linux/macOS only — HA's test machinery imports `fcntl`. They skip themselves
 elsewhere, so the pure suite still runs on Windows; use WSL2 there to run everything.
 
-CI runs `check.sh` against the current and the minimum supported Home Assistant, and against the next
-beta as an advisory lane that may fail, plus `hassfest` and the HACS validation.
+CI runs `check.sh` against the current and the minimum supported Home Assistant, and against the
+newest release, betas included, as an advisory lane that may fail, plus `hassfest` and the HACS
+validation.
 
 ## Credits
 

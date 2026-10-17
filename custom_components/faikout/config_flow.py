@@ -290,7 +290,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    # -- via an own broker ---------------------------------------------------
+    # -- via your own broker -------------------------------------------------
     async def async_step_own_mqtt(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
