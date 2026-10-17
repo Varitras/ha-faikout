@@ -739,3 +739,44 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     # And it really does not fire later.
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=31))
     await hass.async_block_till_done()
+
+
+async def test_a_failed_publish_through_home_assistant_does_not_name_the_host(hass):
+    """Home Assistant's own publish error quotes the topic, hostname included.
+
+    Passed on as it was, a script engine logged it at ERROR with the host in
+    clear text.
+    """
+    from custom_components.faikout.transport import HaMqttTransport
+
+    async def _refuse(hass, topic, payload):
+        raise HomeAssistantError(f'Cannot publish to topic "{topic}"')
+
+    transport = HaMqttTransport(hass)
+    with (
+        patch("custom_components.faikout.transport.mqtt.async_publish", _refuse),
+        pytest.raises(HomeAssistantError) as raised,
+    ):
+        await transport.async_publish("command/SecretHostXYZ/control", "{}")
+
+    assert "SecretHostXYZ" not in str(raised.value)
+    assert raised.value.translation_key == "publish_failed"
+
+
+async def test_a_failed_command_tells_the_ui_what_happened(hass):
+    """The UI translates by key; without one it can only show the English text."""
+    transport = make_transport()
+
+    async def _boom(topic, payload):
+        raise RuntimeError("socket gone")
+
+    await setup_integration(hass, transport)
+    transport.async_publish = _boom
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await hass.services.async_call(
+            "climate", "turn_off", {"entity_id": CLIMATE}, blocking=True
+        )
+
+    assert raised.value.translation_key == "send_failed"
+    assert TEST_HOST not in str(raised.value)
