@@ -55,8 +55,7 @@
     },
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
-      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
-      "reauth_successful": "Neuanmeldung erfolgreich."
+      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."
     }
   },
   "options": {
@@ -80,7 +79,9 @@
       }
     },
     "error": {
-      "host_required": "Bitte den Broker-Host angeben, wenn ein eigener MQTT-Client genutzt wird."
+      "host_required": "Bitte den Broker-Host angeben, wenn ein eigener MQTT-Client genutzt wird.",
+      "cannot_connect": "Verbindung zu diesem Broker nicht möglich. Host, Port und Zugangsdaten prüfen.",
+      "invalid_auth": "Benutzername oder Passwort für diesen Broker ist falsch."
     }
   },
   "entity": {
