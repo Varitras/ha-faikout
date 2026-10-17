@@ -930,8 +930,8 @@ async def test_a_renamed_module_is_followed_to_its_new_topic(hass):
     """Same MAC under a new hostname is the same device with new topics.
 
     The entry kept subscribing to the old name and the only way out was to
-    delete it and lose the entity customisations. The title follows too, as
-    the device name already does.
+    delete it and lose the entity customisations. A title still equal to the
+    old hostname follows too; one the user chose stays.
     """
     entry = _entry_known_as(hass, "old-name")
 
@@ -957,6 +957,7 @@ async def test_a_module_found_on_another_broker_is_not_renamed(hass):
     result = await _pick_on_ha_mqtt(hass, {TEST_HOST: RENAMED_MAC}, TEST_HOST)
 
     assert result["reason"] == "rename_other_broker"
+    assert result["description_placeholders"] == {"old": "old-name", "new": TEST_HOST}
     assert entry.data[CONF_HOST] == "old-name"
     assert entry.title == "old-name"
 
@@ -971,7 +972,25 @@ async def test_a_name_the_module_still_announces_is_not_a_rename(hass):
 
     # Not "already configured": the user would believe the entry works.
     assert result["reason"] == "rename_old_name_still_announced"
+    assert result["description_placeholders"] == {"old": "old-name", "new": TEST_HOST}
     assert entry.data[CONF_HOST] == "old-name"
+
+
+async def test_picking_a_stale_former_name_leaves_the_live_entry_alone(hass):
+    """Which name is alive the flow cannot know; the text must not guess.
+
+    A retained status under the module's former name looks exactly like a
+    rename the other way round.
+    """
+    entry = _entry_known_as(hass, "live-name")
+
+    result = await _pick_on_ha_mqtt(
+        hass, {"live-name": RENAMED_MAC, "former-name": RENAMED_MAC}, "former-name"
+    )
+
+    assert result["reason"] == "rename_old_name_still_announced"
+    assert result["description_placeholders"] == {"old": "live-name", "new": "former-name"}
+    assert entry.data[CONF_HOST] == "live-name"
 
 
 async def test_a_title_the_user_chose_survives_a_rename(hass):

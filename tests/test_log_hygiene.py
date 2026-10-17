@@ -540,6 +540,14 @@ def f(self):
         if err.translation_domain != DOMAIN:
             raise
 ''',
+    "origin check on something else": '''
+def f(self):
+    try:
+        publish()
+    except HomeAssistantError as err:
+        if self.translation_domain == DOMAIN:
+            raise
+''',
     "origin check that only tests presence": '''
 def f(self):
     try:

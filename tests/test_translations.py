@@ -269,6 +269,21 @@ class F(ConfigFlow):
     async def async_step_user(self, user_input=None):
         return self.async_show_form(step_id="user", errors={"base": "nope"})
 """,
+    "errors changed by a method": """
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        errors = {}
+        errors.update(base="nope")
+        return self.async_show_form(step_id="user", errors=errors)
+""",
+    "AbortFlow from a helper": """
+def _gone():
+    raise AbortFlow("gone")
+
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        _gone()
+""",
 }
 
 
@@ -277,4 +292,30 @@ def test_the_flow_key_guard_refuses_forms_it_cannot_read(source):
     """A key it cannot see would pass silently; it has to stop instead."""
     with pytest.raises(AssertionError, match="cannot read"):
         _flow_keys(source)
+
+
+READABLE_FLOW_FORMS = {
+    "errors built as a dict": ("""
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        errors = {"base": "nope"}
+        return self.async_show_form(step_id="user", errors=errors)
+""", ("error", "nope")),
+    "unique id abort with its own reason": ("""
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        self._abort_if_unique_id_configured(error="taken")
+""", ("abort", "taken")),
+    "update and abort": ("""
+class F(ConfigFlow):
+    async def async_step_user(self, user_input=None):
+        return self.async_update_and_abort(entry, reason="moved")
+""", ("abort", "moved")),
+}
+
+
+@pytest.mark.parametrize("case", READABLE_FLOW_FORMS.values(), ids=READABLE_FLOW_FORMS.keys())
+def test_the_flow_key_guard_reads_the_common_forms(case):
+    source, (kind, key) = case
+    assert key in _flow_keys(source)["config"][kind]
 
