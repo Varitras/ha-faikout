@@ -141,7 +141,7 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     async def async_set_temperature(self, **kwargs) -> None:
         # One command for both: the service may carry a mode, and Home Assistant
         # validates it only on set_hvac_mode, not here.
-        command = {}
+        command: dict[str, object] = {}
         hvac_mode = kwargs.get(ATTR_HVAC_MODE)
         if hvac_mode is not None:
             self._valid_mode_or_raise("hvac", hvac_mode, self.hvac_modes)

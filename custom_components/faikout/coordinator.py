@@ -52,7 +52,9 @@ def _decoded(payload) -> str | None:
 
 def _indoor_unit_online(state: dict | None) -> bool:
     """Whether a status dict says the module still reaches the indoor unit."""
-    return bool(state) and as_bool(state.get("online", True))
+    if not state:
+        return False
+    return as_bool(state.get("online", True))
 
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
