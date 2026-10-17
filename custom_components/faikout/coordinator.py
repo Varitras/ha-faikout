@@ -120,9 +120,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             self._unsub_meta = await self._transport.async_subscribe(
                 state_topic(self.host), self._meta_received
             )
-        except ConfigEntryNotReady:
-            raise
         except Exception as err:
+            if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
+                raise  # ours, masked already
             # Home Assistant only retries a config entry with backoff when setup
             # raises ConfigEntryNotReady. HA's own mqtt.async_subscribe raises a
             # plain HomeAssistantError while its broker connection is still
@@ -134,7 +134,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 translation_domain=DOMAIN,
                 translation_key="subscribe_failed",
                 translation_placeholders={"device": device, "reason": reason},
-            ) from err
+            ) from None
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:
@@ -322,9 +322,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             await self._transport.async_publish(
                 control_topic(self.host), json.dumps(fields)
             )
-        except HomeAssistantError:
-            raise
         except Exception as err:
+            if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
+                raise  # ours, masked already
             device, reason = log_identifier(self.host), error_kind(err)
             raise HomeAssistantError(
                 f"Failed to send {fields} to {device}: {reason}",
@@ -335,7 +335,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                     "device": device,
                     "reason": reason,
                 },
-            ) from err
+            ) from None
 
     async def async_shutdown(self) -> None:
         if self._unsub is not None:

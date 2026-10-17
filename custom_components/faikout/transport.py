@@ -190,7 +190,7 @@ class HaMqttTransport(FaikoutTransport):
             await mqtt.async_publish(self.hass, topic, payload)
         except HomeAssistantError as err:
             # Home Assistant's own message quotes the topic, hostname and all.
-            raise _publish_failed(masked_topic(topic), error_kind(err)) from err
+            raise _publish_failed(masked_topic(topic), error_kind(err)) from None
 
     async def async_stop(self) -> None:
         if self._unsub_status is not None:
@@ -286,7 +286,7 @@ class OwnMqttTransport(FaikoutTransport):
                     translation_domain=DOMAIN,
                     translation_key="tls_setup_failed",
                     translation_placeholders={"broker": self._masked_broker, "reason": reason},
-                ) from err
+                ) from None
         self._connack = self.hass.loop.create_future()
         try:
             await self.hass.async_add_executor_job(
@@ -299,13 +299,13 @@ class OwnMqttTransport(FaikoutTransport):
                 translation_domain=DOMAIN,
                 translation_key="broker_unreachable",
                 translation_placeholders={"broker": self._masked_broker, "reason": reason},
-            ) from err
+            ) from None
         self._client.loop_start()
 
         try:
             async with asyncio.timeout(CONNECT_TIMEOUT):
                 reason_code = await self._connack
-        except TimeoutError as err:
+        except TimeoutError:
             await self.async_stop()
             raise ConfigEntryNotReady(
                 f"No CONNACK from MQTT broker {self._masked_broker} within {CONNECT_TIMEOUT}s",
@@ -315,7 +315,7 @@ class OwnMqttTransport(FaikoutTransport):
                     "broker": self._masked_broker,
                     "seconds": str(CONNECT_TIMEOUT),
                 },
-            ) from err
+            ) from None
 
         if _is_failure(reason_code):
             await self.async_stop()

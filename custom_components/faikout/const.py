@@ -135,8 +135,8 @@ def error_kind(error: BaseException) -> str:
 
     Library messages quote what they were given - a TLS failure spells out the
     hostname it rejected - so only the class and, where one exists, the
-    machine-readable reason survive. The cause chain keeps the full text for
-    anyone debugging with the exception in hand.
+    machine-readable reason survive. Errors built from it are raised ``from
+    None``: a logged traceback would print the cause, library text and all.
     """
     reason = (
         getattr(error, "reason", None)
