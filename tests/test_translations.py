@@ -180,7 +180,10 @@ def _flow_keys():
         if section is None:
             continue
         used = keys.setdefault(section, {"error": set(), "abort": set()})
-        for method in [n for n in flow.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        methods = [
+            n for n in flow.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        for method in methods:
             for node in ast.walk(method):
                 if isinstance(node, ast.Assign):
                     for target in node.targets:
@@ -216,7 +219,8 @@ def test_every_form_error_and_abort_reason_has_its_text(language):
     for section, kinds in _flow_keys().items():
         for kind, used in kinds.items():
             present = set(texts.get(section, {}).get(kind, {}))
-            assert used <= present, f"{language.name} {section}.{kind} lacks {sorted(used - present)}"
+            missing = sorted(used - present)
+            assert not missing, f"{language.name} {section}.{kind} lacks {missing}"
 
 
 @pytest.mark.parametrize("language", LANGUAGES, ids=lambda p: p.name)
@@ -227,4 +231,5 @@ def test_no_form_error_or_abort_text_is_left_unused(language):
         for kind in ("error", "abort"):
             present = set(texts.get(section, {}).get(kind, {}))
             used = keys.get(section, {}).get(kind, set())
-            assert present <= used, f"{language.name} {section}.{kind} has unused {sorted(present - used)}"
+            unused = sorted(present - used)
+            assert not unused, f"{language.name} {section}.{kind} has unused {unused}"
