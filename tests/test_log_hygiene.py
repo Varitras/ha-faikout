@@ -318,6 +318,54 @@ def f(self):
     "module level": '''
 _LOGGER.info("loaded for %s", host)
 ''',
+    "tuple assignment": '''
+def f(self):
+    device, reason = self.host, "x"
+    raise HomeAssistantError(f"{device}: {reason}")
+''',
+    "annotated assignment": '''
+def f(self):
+    device: str = self.host
+    raise HomeAssistantError(device)
+''',
+    "config key read with get": '''
+def f(entry):
+    _LOGGER.debug("connecting to %s", entry.data.get(CONF_HOST))
+''',
+    "config key as a string": '''
+def f(entry):
+    _LOGGER.debug("connecting to %s", entry.data["host"])
+''',
+    "unique id": '''
+def f(self):
+    _LOGGER.debug("set up %s", self.unique_id)
+''',
+    "device payload": '''
+def f(msg):
+    _LOGGER.warning("bad state %s", msg.payload)
+''',
+    "logger from getLogger": '''
+def f(self):
+    logging.getLogger(__name__).warning("lost %s", self.host)
+''',
+    "log() with a level": '''
+def f(self):
+    _LOGGER.log(30, "lost %s", self.host)
+''',
+    "foreign error passed on": '''
+def f(self):
+    try:
+        publish()
+    except HomeAssistantError:
+        raise
+''',
+    "foreign error chained as the cause": '''
+def f(self):
+    try:
+        connect()
+    except OSError as err:
+        raise ConfigEntryNotReady(error_kind(err)) from err
+''',
 }
 
 
@@ -339,5 +387,15 @@ def f(self, entry, err):
         translation_key="k",
         translation_placeholders={"device": device, "reason": error_kind(err)},
     )
+
+def g(self, payload):
+    device, reason = log_identifier(self.host), "x"
+    _LOGGER.warning("ignoring %d characters from %s", len(payload), device)
+    try:
+        publish()
+    except HomeAssistantError as err:
+        if err.translation_domain == DOMAIN:
+            raise
+        raise HomeAssistantError(error_kind(err)) from None
 '''
     assert _offenders_in(masked) == []

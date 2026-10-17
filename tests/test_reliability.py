@@ -791,3 +791,27 @@ async def test_a_failed_command_tells_the_ui_what_happened(hass):
 
     assert raised.value.translation_key == "send_failed"
     assert TEST_HOST not in str(raised.value)
+
+
+@pytest.mark.parametrize("step", ["tls", "connect"])
+async def test_a_setup_failure_does_not_carry_the_broker_in_its_cause(hass, step):
+    """Home Assistant logs a failed setup's traceback at debug level.
+
+    The message was masked, but the chained cause was the library's own text:
+    a certificate issued for another name spells out the broker it rejected.
+    """
+    import traceback
+
+    leak = OSError("certificate is not valid for 'secret-broker.lan'")
+    transport = _tls_transport(hass)
+    if step == "tls":
+        transport._client.tls_set.side_effect = leak
+    else:
+        transport._client.connect.side_effect = leak
+
+    with pytest.raises(ConfigEntryNotReady) as raised:
+        await transport.async_connect()
+
+    logged = "".join(traceback.format_exception(raised.value))
+    assert "secret-broker" not in logged
+
