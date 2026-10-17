@@ -529,7 +529,13 @@ async def test_oversized_payload_is_dropped_before_decoding(hass):
     await setup_integration(hass, transport)
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
 
-    huge = ('{"temp": 30, "pad": "' + "x" * MAX_PAYLOAD_CHARS + '"}').encode()
+    class ExplodingPayload(bytes):
+        # Same size either way, so only a payload that refuses to be decoded
+        # can tell "measured first" from "decoded, then measured".
+        def decode(self, *args, **kwargs):
+            raise AssertionError("payload was decoded before its size was checked")
+
+    huge = ExplodingPayload(('{"temp": 30, "pad": "' + "x" * MAX_PAYLOAD_CHARS + '"}').encode())
     transport.feed(status_topic(TEST_HOST), huge)
     await hass.async_block_till_done()
 

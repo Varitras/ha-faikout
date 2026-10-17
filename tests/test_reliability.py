@@ -418,16 +418,21 @@ async def test_throttle_keeps_only_the_latest_of_several_updates(hass):
     from custom_components.faikout.const import CONF_UPDATE_INTERVAL
 
     transport = make_transport()
-    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 60})
+    entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 60})
+    # The end state alone cannot tell one flush from two: count them.
+    pushes = []
+    entry.runtime_data.async_add_listener(lambda: pushes.append(None))
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 24}))
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 25}))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+    assert not pushes
 
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=61))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).attributes["temperature"] == 25
+    assert len(pushes) == 1
 
 
 async def test_discover_on_broker_collects_macs_and_cleans_up(hass):
@@ -729,6 +734,8 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     transport = make_transport()
     entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
     coordinator = entry.runtime_data
+    pushes = []
+    coordinator.async_add_listener(lambda: pushes.append(None))
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 26}))
     await hass.async_block_till_done()
@@ -737,10 +744,12 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
     assert coordinator._flush_unsub is None, "the stale timer was left armed"
+    assert len(pushes) == 1, "the availability change was not pushed at once"
 
     # And it really does not fire later.
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=31))
     await hass.async_block_till_done()
+    assert len(pushes) == 1, "the cancelled timer still pushed"
 
 
 async def test_a_failed_publish_through_home_assistant_does_not_name_the_host(hass):
