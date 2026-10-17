@@ -31,8 +31,9 @@ CONF_MAC = "mac"
 DISCOVERY_TOPIC = "state/+"
 
 # Option: throttle how often incoming MQTT updates are pushed into HA entities.
-# 0 = real-time (every message). N>0 = at most one update per N seconds
-# (the latest value is always flushed). Purely HA-side; does not touch the device.
+# 0 = real-time (every message). N>0 = at most one update per N seconds (the
+# latest value is always flushed; availability changes bypass it). Purely
+# HA-side; does not touch the device.
 CONF_UPDATE_INTERVAL = "update_interval"
 # Default to coalescing updates into one push per 10s. The module reports on
 # every change, which for a running AC is far more often than anyone needs and
@@ -273,7 +274,7 @@ def fan_ha_to_dev(mode: str) -> str:
     return str(mode)
 
 
-# --- Swing ------------------------------------------------------------------
+# --- Value coercion ---------------------------------------------------------
 def as_number(value) -> int | float | None:
     """A device value usable as a number, or None.
 
@@ -306,6 +307,7 @@ def as_bool(value) -> bool:
     return bool(value)
 
 
+# --- Swing ------------------------------------------------------------------
 SWING_OFF = "off"
 SWING_ON = "on"
 # Home Assistant models the two axes separately: SWING_MODE is the vertical
@@ -358,7 +360,8 @@ def device_metadata(meta: dict) -> dict:
 
     That topic carries ``app`` (product), ``version`` (firmware), ``build-suffix``
     (hardware variant) and ``id`` (MAC). ``/status`` does not, so device info is
-    sourced from here. Missing keys yield ``None``.
+    sourced from here. Missing keys yield ``None``, except the model, which
+    falls back to "Faikout".
     """
     def _text(value):
         # These end up in the persisted device registry, so they are truncated
@@ -483,7 +486,7 @@ def merge_state(current: dict | None, payload: str) -> dict | None:
     """Merge a raw MQTT payload into the current state dict.
 
     Returns the new dict, or None if unparseable/ignored. A bare
-    'true'/'false' is the module presence (LWT/birth).
+    'true'/'false' sets ``online``.
     """
     data = dict(current or {})
     if payload in ("true", "false"):

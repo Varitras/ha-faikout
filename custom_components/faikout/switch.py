@@ -39,7 +39,7 @@ async def async_setup_entry(
 
 
 class FaikoutSwitch(FaikoutEntity, SwitchEntity):
-    """A single boolean control field (powerful/econo/streamer/swingv/swingh)."""
+    """A single boolean control field, one per SWITCH_FIELDS entry the unit reports."""
 
     def __init__(self, coordinator, field: str) -> None:
         super().__init__(coordinator)

@@ -195,13 +195,14 @@ the entry and the device if the host should not appear there either.
 
 The device↔Home Assistant logic lives in `const.py` and imports no Home Assistant code, so it is unit
 tested standalone. On top of that, the config flow, coordinator and entities are tested against a real
-Home Assistant core with a fake MQTT transport — no broker required.
+Home Assistant core with a fake MQTT transport, and the default transport through Home Assistant's own
+MQTT integration — no broker required.
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements-test.txt
-pip install pytest-homeassistant-custom-component paho-mqtt   # for the full suite
+pip install pytest-homeassistant-custom-component   # for the full suite
 pytest -q
 ```
 

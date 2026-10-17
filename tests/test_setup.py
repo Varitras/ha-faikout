@@ -28,7 +28,6 @@ async def test_setup_and_unload(hass):
 
     assert entry.state is ConfigEntryState.LOADED
     assert transport.connected
-    # Both the /status and the bare state topic must be subscribed.
     assert set(transport.subs) == {status_topic(TEST_HOST), state_topic(TEST_HOST)}
 
     assert await hass.config_entries.async_unload(entry.entry_id)
@@ -271,7 +270,6 @@ async def test_update_interval_throttles_pushes(hass, freezer):
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"temp": 25}))
     await hass.async_block_till_done()
-    # Throttled: not visible yet.
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
 
     from homeassistant.util import dt as dt_util
@@ -346,7 +344,6 @@ async def test_heartbeat_meta_does_not_drop_diagnostics(hass):
     )
     await hass.async_block_till_done()
 
-    # diagnostics from the earlier full status must survive
     assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
 
 

@@ -15,6 +15,8 @@ it holds.
 | `test_log_hygiene.py::test_nothing_identifying_reaches_a_log_in_the_clear` | no logger call or exception message carries a host, MAC or topic unmasked |
 | `test_log_hygiene.py::test_the_package_has_modules_to_scan` | the guard above actually found modules to scan |
 | `test_log_hygiene.py::test_guard_resolves_the_assignment_in_force_at_the_raise` | the guard follows a variable to the value it holds at the raise |
+| `test_log_hygiene.py::test_guard_reports_each_form_it_once_missed` | every logging and raising form the guard once missed stays caught |
+| `test_log_hygiene.py::test_guard_accepts_masked_values_in_every_form` | the counter-check: masked values in those forms pass |
 | `test_translations.py::test_every_language_has_the_same_keys` | every language ships the same strings as English |
 | `test_translations.py::test_every_raised_translation_key_exists_with_its_placeholders` | an error the code raises has its text and placeholders in every language |
 | `test_translations.py::test_the_code_raises_translated_errors` | the guard above actually found raise sites to check |

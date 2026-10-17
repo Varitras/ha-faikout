@@ -513,8 +513,8 @@ async def test_discover_on_broker_refusal_is_reported(hass):
 
 
 async def test_discovery_timeout_does_not_name_the_broker(hass):
-    """The config flow logs this failure; a silent broker must not put its
-    address into that line."""
+    """The message travels with the exception to whatever logs it later; a
+    silent broker must not put its address into it."""
     from custom_components.faikout import transport as transport_module
 
     class SilentClient:

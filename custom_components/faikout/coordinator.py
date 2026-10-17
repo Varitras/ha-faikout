@@ -91,8 +91,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self.transport_online = True
         transport.set_connection_listener(self._transport_connection_changed)
         transport.set_auth_failure_listener(self._auth_failed)
-        # Update throttle: 0 = real-time; N>0 = push to HA at most every N seconds
-        # (latest value always flushed via a trailing timer).
+        # Update throttle: 0 = real-time; N>0 = at most one push per N seconds,
+        # the latest value flushed by a trailing timer. Availability bypasses it.
         self._min_interval = 0.0
         self._pending: dict | None = None
         # None = nothing pushed yet. Must not start at 0.0: loop.time() is a
@@ -252,7 +252,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             )
             return
         self._pending = new_state
-        # Only a real JSON state (not a bare presence "true"/"false") satisfies
+        # Only a real JSON state (not a bare "true"/"false") satisfies
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()

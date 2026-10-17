@@ -295,8 +295,8 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
             broker = _broker_from_input(user_input)
             _, error = await _probe_broker(self.hass, broker)
             if error is None:
-                # The reload is explicit: an entry whose setup the broker
-                # rejected never got as far as anything that would reload it.
+                # Reloaded here because nothing else would: there is no update
+                # listener, and OptionsFlowWithReload covers only the options.
                 return self.async_update_reload_and_abort(
                     entry, options={**entry.options, **broker}
                 )
@@ -377,7 +377,7 @@ class FaikoutOptionsFlow(OptionsFlowWithReload):
         """Probe a broker the form changed, before it is saved.
 
         Saved unchecked, a mistyped host only surfaces after the reload, as an
-        endless setup retry the user has no form to correct in.
+        endless setup retry instead of an error on this form.
         """
         if not submitted.get(CONF_USE_OWN_MQTT):
             return None
@@ -451,10 +451,10 @@ class FaikoutOptionsFlow(OptionsFlowWithReload):
                 probatio.Optional(
                     CONF_MQTT_USERNAME, description=_prefilled(o.get(CONF_MQTT_USERNAME, ""))
                 ): selector.TextSelector(),
-                # Neither default nor suggested value: the schema is serialised
-                # into the form response, so either would hand the stored
-                # password to the browser. Blank means "unchanged"; see
-                # _password_to_store.
+                # An empty default, never the stored value: defaults and
+                # suggested values are serialised into the form response and
+                # would hand the password to the browser. Blank means
+                # "unchanged"; see _password_to_store.
                 probatio.Optional(
                     CONF_MQTT_PASSWORD, default=""
                 ): selector.TextSelector(

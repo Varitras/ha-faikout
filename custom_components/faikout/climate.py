@@ -54,8 +54,6 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         )
         if "fan" in self._data:
             features |= ClimateEntityFeature.FAN_MODE
-        # any(), not the tuple itself: a two-element tuple is always truthy,
-        # so testing it directly advertised swing on units without any axis.
         vertical, horizontal = self._swing_axes
         if vertical:
             features |= ClimateEntityFeature.SWING_MODE

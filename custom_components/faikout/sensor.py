@@ -60,7 +60,7 @@ def _temp(key: str) -> FaikoutSensorDescription:
 
 
 def _energy(key: str, translation_key: str) -> FaikoutSensorDescription:
-    # Device reports Wh; expose as kWh (factor 1/1000).
+    # The device reports Wh.
     return FaikoutSensorDescription(
         key=key,
         translation_key=translation_key,
@@ -83,9 +83,8 @@ def _diag(key: str, translation_key: str, source: str = "meta", **kw) -> Faikout
     )
 
 
-# Keys map to the state/<host>/status payload. A sensor is only created when
-# its key is present in the current state, so fields a given model does not
-# report simply do not appear.
+# A sensor is only created once its key appears in its source (status or
+# meta), so fields a given model does not report simply do not appear.
 DESCRIPTIONS: list[SensorEntityDescription] = [
     _temp("home"),
     _temp("outside"),
@@ -221,7 +220,7 @@ def _source_dict(coordinator, description) -> dict:
 
 
 class FaikoutSensor(FaikoutEntity, SensorEntity):
-    """A single numeric reading from the module status."""
+    """A single reading from the module's status or app status."""
 
     def __init__(self, coordinator, description: SensorEntityDescription) -> None:
         super().__init__(coordinator)

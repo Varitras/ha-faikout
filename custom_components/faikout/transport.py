@@ -126,8 +126,8 @@ class FaikoutTransport:
     def set_connection_listener(self, listener: Callable[[bool], None]) -> None:
         """Register a callback invoked with the live connection state.
 
-        Only the own-client transport can lose its connection independently of
-        Home Assistant; the HA transport never calls this.
+        Both transports report it: the own client from paho's callbacks, the HA
+        transport from Home Assistant's MQTT connection status.
         """
 
     def set_auth_failure_listener(self, listener: Callable[[], None]) -> None:
@@ -138,7 +138,7 @@ class FaikoutTransport:
         """
 
     async def async_connect(self) -> None:
-        """Establish the connection (no-op for the HA transport)."""
+        """Establish the connection, or start watching the shared one."""
 
     async def async_subscribe(
         self, topic: str, callback: Callable[[FaikoutMessage], None]
@@ -150,7 +150,7 @@ class FaikoutTransport:
         raise NotImplementedError
 
     async def async_stop(self) -> None:
-        """Tear down the connection (no-op for the HA transport)."""
+        """Tear down what async_connect set up."""
 
 
 def _publish_failed(masked: str, reason: str) -> HomeAssistantError:
@@ -211,8 +211,7 @@ class OwnMqttTransport(FaikoutTransport):
         tls: bool = False,
         tls_insecure: bool = False,
     ) -> None:
-        # Imported lazily so the module loads even where paho is unavailable and
-        # this transport is not used. paho ships with HA's MQTT integration.
+        # Only this transport and the broker discovery talk to paho directly.
         import paho.mqtt.client as paho
 
         self._paho = paho
@@ -448,8 +447,9 @@ async def async_discover_on_broker(
     Returns hostname -> MAC (None when the module did not report one in the
     listening window).
 
-    Used by the config flow when the user sets up an own broker, so devices on
-    that broker can be discovered without Home Assistant's MQTT integration.
+    Used by the config flow to discover modules on an own broker, and as the
+    connection probe for reauth and options, without Home Assistant's MQTT
+    integration.
     Raises OSError when the broker cannot be reached and MqttConnectionRefused
     when it rejects the CONNACK (e.g. wrong credentials) — without that check a
     bad password would look like "connected, no devices found".

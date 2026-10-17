@@ -4,8 +4,9 @@
 #   PYTHON=.venv/bin/python ./check.sh
 #
 # The interpreter arrives by environment variable so no machine-local path
-# lives in here. It needs ruff, mypy and the Home Assistant test stack, which
-# on Windows means WSL: Home Assistant's test machinery imports fcntl.
+# lives in here. It needs the tools in requirements-ci.txt and the Home
+# Assistant test stack, which on Windows means WSL: Home Assistant's test
+# machinery imports fcntl.
 # Stops at the first failure. A gate whose tool is missing fails too: a skipped
 # gate under "All gates green" is a promise the run did not keep.
 set -eu

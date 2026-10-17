@@ -20,7 +20,7 @@ jobs:
     name: check.sh (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
-      # Both rows should always report; one failing must not hide the other.
+      # Every lane should always report; one failing must not hide the others.
       fail-fast: false
       matrix:
         include:
