@@ -49,6 +49,11 @@ def _decoded(payload) -> str | None:
         return payload.decode(errors="replace")
     return payload
 
+
+def _indoor_unit_online(state: dict | None) -> bool:
+    """Whether a status dict says the module still reaches the indoor unit."""
+    return bool(state) and as_bool(state.get("online", True))
+
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
 
@@ -94,6 +99,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # back for a whole interval.
         self._last_push: float | None = None
         self._flush_unsub: Callable[[], None] | None = None
+
+    @property
+    def indoor_unit_online(self) -> bool:
+        return _indoor_unit_online(self.data)
 
     @callback
     def set_update_interval(self, seconds) -> None:
@@ -241,6 +250,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
+        if _indoor_unit_online(new_state) != self.indoor_unit_online:
+            # Same rule as the module topic: availability never waits.
+            self._flush()
+            return
         self._maybe_push()
 
     @callback

@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import (
 )
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, as_bool, device_metadata, normalize_mac
+from .const import DOMAIN, device_metadata, normalize_mac
 from .coordinator import FaikoutCoordinator
 
 
@@ -43,10 +43,13 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
 
     @property
     def available(self) -> bool:
+        return self._module_available and self.coordinator.indoor_unit_online
+
+    @property
+    def _module_available(self) -> bool:
+        """The module itself is reachable, whatever its link to the indoor unit."""
         return (
             super().available
-            and bool(self.coordinator.data)
-            and (("online" not in self._data) or as_bool(self._data["online"]))
             and self.coordinator.module_online
             and self.coordinator.transport_online
         )

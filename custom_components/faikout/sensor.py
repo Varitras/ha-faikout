@@ -229,6 +229,14 @@ class FaikoutSensor(FaikoutEntity, SensorEntity):
         self._attr_unique_id = f"{coordinator.device_id}_{description.key}"
 
     @property
+    def available(self) -> bool:
+        # The module publishes its own diagnostics; they are what a user reads
+        # when the indoor unit has gone quiet, so they must not go with it.
+        if getattr(self.entity_description, "source", "status") == "meta":
+            return self._module_available
+        return super().available
+
+    @property
     def native_value(self):
         raw = _source_dict(self.coordinator, self.entity_description).get(
             self.entity_description.key
