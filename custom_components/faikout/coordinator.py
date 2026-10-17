@@ -128,8 +128,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             # plain HomeAssistantError while its broker connection is still
             # coming up (common on a restart), which would otherwise leave this
             # entry permanently in SETUP_ERROR until reloaded by hand.
+            device, reason = log_identifier(self.host), error_kind(err)
             raise ConfigEntryNotReady(
-                f"Cannot subscribe to the topics for {log_identifier(self.host)}: {error_kind(err)}"
+                f"Cannot subscribe to the topics for {device}: {reason}",
+                translation_domain=DOMAIN,
+                translation_key="subscribe_failed",
+                translation_placeholders={"device": device, "reason": reason},
             ) from err
 
     @callback
@@ -321,8 +325,16 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         except HomeAssistantError:
             raise
         except Exception as err:
+            device, reason = log_identifier(self.host), error_kind(err)
             raise HomeAssistantError(
-                f"Failed to send {fields} to {log_identifier(self.host)}: {error_kind(err)}"
+                f"Failed to send {fields} to {device}: {reason}",
+                translation_domain=DOMAIN,
+                translation_key="send_failed",
+                translation_placeholders={
+                    "command": str(fields),
+                    "device": device,
+                    "reason": reason,
+                },
             ) from err
 
     async def async_shutdown(self) -> None:

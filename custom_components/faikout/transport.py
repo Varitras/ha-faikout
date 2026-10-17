@@ -38,6 +38,7 @@ from .const import (
     CONF_USE_OWN_MQTT,
     DEFAULT_MQTT_PORT,
     DISCOVERY_TOPIC,
+    DOMAIN,
     MAX_DISCOVERED_HOSTS,
     MAX_PAYLOAD_CHARS,
     effective_port,
@@ -152,6 +153,17 @@ class FaikoutTransport:
         """Tear down the connection (no-op for the HA transport)."""
 
 
+def _publish_failed(topic: str, reason: str) -> HomeAssistantError:
+    """The error a failed command surfaces as, the same for both transports."""
+    masked = masked_topic(topic)
+    return HomeAssistantError(
+        f"Could not publish to {masked}: {reason}",
+        translation_domain=DOMAIN,
+        translation_key="publish_failed",
+        translation_placeholders={"topic": masked, "reason": reason},
+    )
+
+
 class HaMqttTransport(FaikoutTransport):
     """Transport backed by Home Assistant's own MQTT integration."""
 
@@ -175,7 +187,11 @@ class HaMqttTransport(FaikoutTransport):
         return await mqtt.async_subscribe(self.hass, topic, callback)
 
     async def async_publish(self, topic, payload):
-        await mqtt.async_publish(self.hass, topic, payload)
+        try:
+            await mqtt.async_publish(self.hass, topic, payload)
+        except HomeAssistantError as err:
+            # Home Assistant's own message quotes the topic, hostname and all.
+            raise _publish_failed(topic, error_kind(err)) from err
 
     async def async_stop(self) -> None:
         if self._unsub_status is not None:
@@ -228,6 +244,10 @@ class OwnMqttTransport(FaikoutTransport):
     def set_auth_failure_listener(self, listener) -> None:
         self._auth_failed = listener
 
+    @property
+    def _masked_broker(self) -> str:
+        return f"{log_identifier(self._host)}:{self._port}"
+
     def _setup_tls(self) -> None:
         """Arm TLS on the client. Runs in an executor: this touches the disk."""
         import ssl
@@ -262,9 +282,12 @@ class OwnMqttTransport(FaikoutTransport):
             try:
                 await self.hass.async_add_executor_job(self._setup_tls)
             except Exception as err:
+                reason = error_kind(err)
                 raise ConfigEntryNotReady(
-                    f"Cannot set up TLS for {log_identifier(self._host)}:{self._port}: "
-                    f"{error_kind(err)}"
+                    f"Cannot set up TLS for {self._masked_broker}: {reason}",
+                    translation_domain=DOMAIN,
+                    translation_key="tls_setup_failed",
+                    translation_placeholders={"broker": self._masked_broker, "reason": reason},
                 ) from err
         self._connack = self.hass.loop.create_future()
         try:
@@ -272,9 +295,12 @@ class OwnMqttTransport(FaikoutTransport):
                 self._client.connect, self._host, self._port, 60
             )
         except OSError as err:
+            reason = error_kind(err)
             raise ConfigEntryNotReady(
-                f"Cannot connect to MQTT broker {log_identifier(self._host)}:{self._port}: "
-                f"{error_kind(err)}"
+                f"Cannot connect to MQTT broker {self._masked_broker}: {reason}",
+                translation_domain=DOMAIN,
+                translation_key="broker_unreachable",
+                translation_placeholders={"broker": self._masked_broker, "reason": reason},
             ) from err
         self._client.loop_start()
 
@@ -284,19 +310,31 @@ class OwnMqttTransport(FaikoutTransport):
         except TimeoutError as err:
             await self.async_stop()
             raise ConfigEntryNotReady(
-                f"No CONNACK from MQTT broker {log_identifier(self._host)}:{self._port} "
-                f"within {CONNECT_TIMEOUT}s"
+                f"No CONNACK from MQTT broker {self._masked_broker} within {CONNECT_TIMEOUT}s",
+                translation_domain=DOMAIN,
+                translation_key="broker_no_answer",
+                translation_placeholders={
+                    "broker": self._masked_broker,
+                    "seconds": str(CONNECT_TIMEOUT),
+                },
             ) from err
 
         if _is_failure(reason_code):
             await self.async_stop()
-            message = (
-                f"MQTT broker {log_identifier(self._host)}:{self._port} refused the connection: "
-                f"{reason_code}"
+            error_class: type[ConfigEntryAuthFailed] | type[ConfigEntryNotReady] = (
+                ConfigEntryNotReady
             )
             if getattr(reason_code, "value", reason_code) in AUTH_FAILURE_CODES:
-                raise ConfigEntryAuthFailed(message)
-            raise ConfigEntryNotReady(message)
+                error_class = ConfigEntryAuthFailed
+            raise error_class(
+                f"MQTT broker {self._masked_broker} refused the connection: {reason_code}",
+                translation_domain=DOMAIN,
+                translation_key="broker_refused",
+                translation_placeholders={
+                    "broker": self._masked_broker,
+                    "reason": str(reason_code),
+                },
+            )
 
         self._connected_once = True
 
@@ -378,9 +416,8 @@ class OwnMqttTransport(FaikoutTransport):
         if info.rc != self._paho.MQTT_ERR_SUCCESS:
             # Most commonly MQTT_ERR_NO_CONN. Raising makes the service call
             # fail visibly instead of pretending the device got the command.
-            raise HomeAssistantError(
-                f"Could not publish to {masked_topic(topic)}: "
-                f"{self._paho.error_string(info.rc)} (rc={info.rc})"
+            raise _publish_failed(
+                topic, f"{self._paho.error_string(info.rc)} (rc={info.rc})"
             )
 
     async def async_stop(self) -> None:

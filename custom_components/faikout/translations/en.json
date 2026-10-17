@@ -194,6 +194,41 @@
       "demand": {
         "name": "Demand"
       }
+    },
+    "climate": {
+      "faikout": {
+        "state_attributes": {
+          "fan_mode": {
+            "state": {
+              "auto": "Auto",
+              "quiet": "Quiet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "subscribe_failed": {
+      "message": "Cannot subscribe to the topics for {device}: {reason}"
+    },
+    "send_failed": {
+      "message": "Failed to send {command} to {device}: {reason}"
+    },
+    "publish_failed": {
+      "message": "Could not publish to {topic}: {reason}"
+    },
+    "tls_setup_failed": {
+      "message": "Cannot set up TLS for {broker}: {reason}"
+    },
+    "broker_unreachable": {
+      "message": "Cannot connect to MQTT broker {broker}: {reason}"
+    },
+    "broker_no_answer": {
+      "message": "No answer from MQTT broker {broker} within {seconds} s"
+    },
+    "broker_refused": {
+      "message": "MQTT broker {broker} refused the connection: {reason}"
     }
   }
 }
