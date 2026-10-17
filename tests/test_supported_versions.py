@@ -57,25 +57,33 @@ def test_every_action_is_pinned_or_a_known_moving_ref():
     assert not unpinned, f"not pinned to a version or an allowed moving ref: {unpinned}"
 
 
-def test_the_claimed_minimum_provides_what_the_code_relies_on():
-    """The floor is not a number we picked - it is the release that has the API.
+def _meets_minimum(installed: str, minimum: str) -> bool:
+    from awesomeversion import AwesomeVersion
 
-    2026.10 is the first release whose flow API is typed for probatio; 2026.9
-    ships probatio but still declares voluptuous schemas, so mypy fails there.
-    The coordinator also looks a device up by identifier and config entry,
-    which exists from 2026.8. Running against anything older has to fail here
-    rather than in a type check nobody reads or at the first metadata update.
+    return AwesomeVersion(installed) >= AwesomeVersion(minimum)
+
+
+def test_the_installed_home_assistant_meets_the_claimed_minimum():
+    """The minimum lane really runs the version hacs.json claims, or newer.
+
+    Checking an API instead proved nothing: 2026.9 aliases voluptuous to
+    probatio at runtime, so the probatio annotation the 2026.10 floor rests on
+    already shows there - the difference only exists for mypy.
     """
     pytest.importorskip("homeassistant")
-    import inspect
+    from homeassistant.const import __version__
 
-    from homeassistant.data_entry_flow import FlowHandler
-    from homeassistant.helpers.device_registry import DeviceRegistry
+    assert _meets_minimum(__version__, _claimed_minimum()), (
+        f"the installed Home Assistant {__version__} is older than the claimed "
+        f"minimum {_claimed_minimum()}"
+    )
 
-    too_old = f"the installed Home Assistant is older than the claimed minimum {_claimed_minimum()}"
-    schema_type = inspect.signature(FlowHandler.async_show_form).parameters["data_schema"]
-    assert "probatio" in str(schema_type.annotation), too_old
-    assert hasattr(DeviceRegistry, "async_get_device_by_identifier"), too_old
+
+def test_versions_compare_as_numbers():
+    """2026.9 sorts after 2026.10 as text; the guard above must not."""
+    pytest.importorskip("awesomeversion")
+    assert not _meets_minimum("2026.9.4", "2026.10.0")
+    assert _meets_minimum("2026.10.0", "2026.10.0")
 
 
 def test_every_tool_check_sh_runs_is_pinned_for_ci():
@@ -94,3 +102,23 @@ def test_every_tool_check_sh_runs_is_pinned_for_ci():
     }
     assert tools, "found no tools in check.sh - the scan is broken"
     assert tools <= pinned, f"not pinned in requirements-ci.txt: {sorted(tools - pinned)}"
+
+
+GUARD_MODULES = ("test_supported_versions.py", "test_log_hygiene.py", "test_translations.py")
+
+
+def test_every_guard_is_in_this_index():
+    """Deleting a guard is a green diff; the index is what makes it visible."""
+    index = (REPO / "tests" / "README.md").read_text(encoding="utf-8")
+    listed = {
+        entry
+        for entry in re.findall(r"`(test_\w+\.py::test_\w+)`", index)
+        if entry.split("::")[0] in GUARD_MODULES
+    }
+    present = set()
+    for name in GUARD_MODULES:
+        source = (REPO / "tests" / name).read_text(encoding="utf-8")
+        present |= {f"{name}::{t}" for t in re.findall(r"^def (test_\w+)", source, flags=re.M)}
+    assert not present - listed, f"not in tests/README.md: {sorted(present - listed)}"
+    assert not listed - present, f"listed but gone: {sorted(listed - present)}"
+
