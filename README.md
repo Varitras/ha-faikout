@@ -88,7 +88,7 @@ The config flow first asks **how** Home Assistant should reach the module:
 | Choice | Use when |
 |---|---|
 | **Home Assistant's MQTT integration** | your Faikout publishes to the broker HA is already connected to |
-| **An own MQTT broker** | the Faikout lives on a different broker than HA's MQTT client |
+| **Your own MQTT broker** | the Faikout lives on a different broker than HA's MQTT client |
 
 Either way the integration then listens briefly on `state/+` and offers the modules it found. You can also
 type the hostname by hand — it is the middle part of the topics, the `GuestAC` in `state/GuestAC`.
@@ -199,19 +199,29 @@ Home Assistant core with a fake MQTT transport — no broker required.
 
 ```bash
 python -m venv .venv
+. .venv/bin/activate
 pip install -r requirements-test.txt
 pip install pytest-homeassistant-custom-component paho-mqtt   # for the full suite
 pytest -q
 ```
 
+`check.sh` runs everything a change has to pass — ruff, mypy, the tests with a coverage floor and
+vulture — and needs those tools in the same environment:
+
+```bash
+pip install pytest-cov ruff mypy vulture
+PYTHON=.venv/bin/python ./check.sh
+```
+
 The Home Assistant tests are Linux/macOS only — HA's test machinery imports `fcntl`. They skip themselves
 elsewhere, so the pure suite still runs on Windows; use WSL2 there to run everything.
 
-CI runs the suite against both the current and the minimum supported Home Assistant, plus `hassfest`.
+CI runs `check.sh` against the current and the minimum supported Home Assistant, and against the next
+beta as an advisory lane that may fail, plus `hassfest` and the HACS validation.
 
 ## Credits
 
-The [ESP32-Faikin](https://codeberg.org/RevK/ESP32-Faikout) firmware and hardware are by RevK. This
+The [ESP32-Faikout](https://codeberg.org/RevK/ESP32-Faikout) firmware and hardware are by RevK. This
 integration is an independent Home Assistant client for it and is not affiliated with that project or
 with Daikin.
 

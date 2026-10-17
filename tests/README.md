@@ -11,14 +11,21 @@ it holds.
 | `test_supported_versions.py::test_the_claimed_minimum_provides_the_registry_api_we_call` | that minimum really provides the device registry API the coordinator calls |
 | `test_supported_versions.py::test_every_action_is_pinned_or_a_known_moving_ref` | every workflow action is version-pinned, bar two deliberate moving refs |
 | `test_supported_versions.py::test_workflow_directory_is_not_empty` | the guard above actually found files to scan |
+| `test_log_hygiene.py::test_nothing_identifying_reaches_a_log_in_the_clear` | no logger call or exception message carries a host, MAC or topic unmasked |
+| `test_log_hygiene.py::test_the_package_has_modules_to_scan` | the guard above actually found modules to scan |
+| `test_log_hygiene.py::test_guard_resolves_the_assignment_in_force_at_the_raise` | the guard follows a variable to the value it holds at the raise |
+| `test_translations.py::test_every_language_has_the_same_keys` | every language ships the same strings as English |
+| `test_translations.py::test_every_raised_translation_key_exists_with_its_placeholders` | an error the code raises has its text and placeholders in every language |
+| `test_translations.py::test_the_code_raises_translated_errors` | the guard above actually found raise sites to check |
+| `conftest.py::no_deprecated_home_assistant_call` (autouse) | any call Home Assistant reports as deprecated fails the test that made it |
 
-None of them may be pinned to a single file: they scan the workflow directory,
-so a second workflow is covered the day it arrives.
+None of them may be pinned to a single file: they scan the workflow directory or
+the whole package, so a new file is covered the day it arrives.
 
 ## Running everything
 
 ```sh
-PYTHON=~/ha-dev/faikout/venv/bin/python ./check.sh
+PYTHON=.venv/bin/python ./check.sh
 ```
 
 The full suite needs Home Assistant's test machinery, which imports `fcntl` and
