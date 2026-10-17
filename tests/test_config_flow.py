@@ -679,3 +679,225 @@ async def test_own_client_pointing_at_home_assistants_broker_is_the_same_broker(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+# --- audit 2026-10-14: recovery and options semantics -----------------------
+def _failing_then_working_transport():
+    """create_transport side effect: the broker first rejects us, then accepts."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    from .ha_helpers import make_transport
+
+    rejected = make_transport()
+    rejected.async_connect = AsyncMock(side_effect=ConfigEntryAuthFailed("rejected"))
+    return [rejected, make_transport()]
+
+
+async def _entry_stuck_on_rejected_credentials(hass) -> MockConfigEntry:
+    from homeassistant.config_entries import ConfigEntryState
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: TEST_HOST, CONF_DEVICE_ID: TEST_HOST},
+        options={CONF_USE_OWN_MQTT: True, CONF_UPDATE_INTERVAL: 0, **BROKER},
+        unique_id=TEST_HOST,
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    return entry
+
+
+async def test_reauth_revives_an_entry_whose_setup_was_rejected(hass):
+    """The reload hung on an update listener that a failed setup never added.
+
+    The user saw "re-authentication successful" and the entry stayed dead until
+    Home Assistant was restarted.
+    """
+    from homeassistant.config_entries import ConfigEntryState
+
+    with patch(
+        "custom_components.faikout.create_transport",
+        side_effect=_failing_then_working_transport(),
+    ):
+        entry = await _entry_stuck_on_rejected_credentials(hass)
+        result = await entry.start_reauth_flow(hass)
+        with patch(
+            "custom_components.faikout.config_flow.async_discover_on_broker",
+            AsyncMock(return_value={TEST_HOST: None}),
+        ):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {**BROKER, CONF_MQTT_PASSWORD: "new-secret"}
+            )
+        await hass.async_block_till_done()
+
+    assert result["reason"] == "reauth_successful"
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_fixing_the_password_in_the_options_revives_a_rejected_entry(hass):
+    from homeassistant.config_entries import ConfigEntryState
+
+    with patch(
+        "custom_components.faikout.create_transport",
+        side_effect=_failing_then_working_transport(),
+    ):
+        entry = await _entry_stuck_on_rejected_credentials(hass)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        with patch(
+            "custom_components.faikout.config_flow.async_discover_on_broker",
+            AsyncMock(return_value={TEST_HOST: None}),
+        ):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"],
+                {
+                    CONF_UPDATE_INTERVAL: 0,
+                    CONF_USE_OWN_MQTT: True,
+                    **BROKER,
+                    CONF_MQTT_PASSWORD: "new-secret",
+                },
+            )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.state is ConfigEntryState.LOADED
+
+
+def _changed_broker(**overrides) -> dict:
+    return {
+        CONF_UPDATE_INTERVAL: 0,
+        CONF_USE_OWN_MQTT: True,
+        CONF_MQTT_HOST: "10.0.0.5",
+        CONF_MQTT_PORT: 1883,
+        CONF_MQTT_USERNAME: "faikout",
+        **overrides,
+    }
+
+
+async def test_options_refuse_a_broker_that_cannot_be_reached(hass):
+    """A typo in the broker host belongs in the form, not in a retry loop."""
+    entry = _entry_with_credentials(hass)
+    probe = AsyncMock(side_effect=OSError("unreachable"))
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with patch("custom_components.faikout.config_flow.async_discover_on_broker", probe):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], _changed_broker(**{CONF_MQTT_HOST: "10.0.0.55"})
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert probe.await_count == 1
+    assert entry.options[CONF_MQTT_HOST] == "10.0.0.5"
+
+
+async def test_options_report_rejected_credentials_on_the_form(hass):
+    from custom_components.faikout.transport import MqttConnectionRefused
+
+    class _Code:
+        value = 5
+        is_failure = True
+
+    entry = _entry_with_credentials(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(side_effect=MqttConnectionRefused(_Code())),
+    ):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], _changed_broker(**{CONF_MQTT_PASSWORD: "wrong"})
+        )
+
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_options_do_not_probe_when_only_the_interval_changes(hass):
+    entry = _entry_with_credentials(hass)
+    probe = AsyncMock(side_effect=OSError("must not be called"))
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with patch("custom_components.faikout.config_flow.async_discover_on_broker", probe):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], _changed_broker(**{CONF_UPDATE_INTERVAL: 30})
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert probe.await_count == 0
+
+
+async def test_an_emptied_username_reaches_the_flow_as_a_missing_key(hass):
+    """The frontend drops an emptied optional text field from the submission.
+
+    With the stored username as the field default, the schema filled it straight
+    back in: an anonymous broker could not be configured through the UI.
+    """
+    entry = _entry_with_credentials(hass)
+    submitted = _changed_broker()
+    del submitted[CONF_MQTT_USERNAME]
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with patch(
+        "custom_components.faikout.config_flow.async_discover_on_broker",
+        AsyncMock(return_value={}),
+    ):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], submitted
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert not result["data"].get(CONF_MQTT_USERNAME)
+    assert result["data"][CONF_MQTT_PASSWORD] == ""
+
+
+async def test_an_emptied_broker_host_is_reported(hass):
+    entry = _entry_with_credentials(hass)
+    submitted = _changed_broker()
+    del submitted[CONF_MQTT_HOST]
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], submitted
+    )
+
+    assert result["errors"] == {CONF_MQTT_HOST: "host_required"}
+
+
+async def test_a_renamed_module_is_followed_to_its_new_topic(hass):
+    """Same MAC under a new hostname is the same device with new topics.
+
+    The entry kept subscribing to the old name and the only way out was to
+    delete it and lose the entity customisations.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: "old-name",
+            CONF_MAC: "22:22:22:22:22:22",
+            CONF_DEVICE_ID: "22:22:22:22:22:22",
+        },
+        unique_id="22:22:22:22:22:22",
+    )
+    entry.add_to_hass(hass)
+
+    result = await _start(hass)
+    with (
+        patch(
+            "custom_components.faikout.config_flow.mqtt.async_wait_for_mqtt_client",
+            AsyncMock(return_value=True),
+        ),
+        patch(
+            "custom_components.faikout.config_flow.FaikoutConfigFlow._discover_hosts",
+            AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "ha_mqtt"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_HOST: TEST_HOST}
+        )
+
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == TEST_HOST
+    assert entry.data[CONF_DEVICE_ID] == "22:22:22:22:22:22"
