@@ -202,7 +202,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Home Assistant records TLS as the CA it validates against,
                 # so the presence of "certificate" is what makes its
                 # connection encrypted. Without reading it, HA-over-TLS and
-                # own-MQTT-over-TLS to the same broker look like two
+                # separate-client-over-TLS to the same broker look like two
                 # different endpoints and both get to drive the same topics.
                 tls = bool(entry.data.get("certificate"))
                 return (host, int(entry.data.get("port", DEFAULT_MQTT_PORT)), tls)
@@ -214,29 +214,36 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         pending = {CONF_USE_OWN_MQTT: bool(self._broker), **self._broker}
         return self._broker_id(entry.options) == self._broker_id(pending)
 
-    def _renamed_entry(self, host: str, mac) -> ConfigEntry | None:
-        """The entry this module had under another name, when it is safe to follow.
+    def _rename(self, host: str, mac) -> tuple[ConfigEntry | None, str | None]:
+        """The entry to follow to a new name, or why following it is refused.
 
         Same MAC, new name: the module was renamed and its topics moved with it.
-        Only on the entry's own broker, though - from another broker the entry
-        would keep its broker and could land on a topic another entry there
-        controls - and only once the old name is no longer announced with this
-        MAC, since a retained status can outlive the rename.
+        Only on the entry's broker, though - from another broker the entry would
+        keep its broker and could land on a topic another entry there controls -
+        and only once the old name is no longer announced with this MAC, since a
+        retained status can outlive the rename. A refusal gets its own reason:
+        "already configured" would tell the user the entry works when it does not.
         """
         for entry in self._async_current_entries(include_ignore=False):
             if entry.unique_id != self.unique_id:
                 continue
             old = entry.data.get(CONF_HOST)
-            still_announced = normalize_mac(self._discovered.get(old)) == normalize_mac(mac)
-            if old == host or still_announced or not self._same_broker(entry):
-                return None
-            return entry
-        return None
+            if old == host:
+                return None, None
+            if not self._same_broker(entry):
+                return None, "rename_other_broker"
+            if normalize_mac(self._discovered.get(old)) == normalize_mac(mac):
+                return None, "rename_old_name_still_announced"
+            return entry, None
+        return None, None
 
     def _follow_rename(self, entry: ConfigEntry, host: str) -> ConfigFlowResult:
-        # The title follows as well: the device name already does.
+        # A title still equal to the old hostname was never chosen by the user,
+        # so it follows the module; one the user set stays.
+        title_was_the_host = entry.title == entry.data.get(CONF_HOST)
+        title = host if title_was_the_host else entry.title
         return self.async_update_reload_and_abort(
-            entry, title=host, data_updates={CONF_HOST: host}, reason="module_renamed"
+            entry, title=title, data_updates={CONF_HOST: host}, reason="module_renamed"
         )
 
     @staticmethod
@@ -273,7 +280,9 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                renamed = self._renamed_entry(host, mac)
+                renamed, refused = self._rename(host, mac)
+                if refused is not None:
+                    return self.async_abort(reason=refused)
                 if renamed is not None:
                     return self._follow_rename(renamed, host)
                 self._abort_if_unique_id_configured()
@@ -339,7 +348,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_own_host(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
-        """Pick the module found on the own broker."""
+        """Pick the module found on your own broker."""
         errors: dict[str, str] = {}
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
@@ -350,7 +359,9 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                renamed = self._renamed_entry(host, mac)
+                renamed, refused = self._rename(host, mac)
+                if refused is not None:
+                    return self.async_abort(reason=refused)
                 if renamed is not None:
                     return self._follow_rename(renamed, host)
                 self._abort_if_unique_id_configured()
@@ -385,7 +396,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FaikoutOptionsFlow(OptionsFlowWithReload):
-    """Options: update throttle and an optional own MQTT client."""
+    """Options: update throttle and an optional separate MQTT client."""
 
     def _password_to_store(self, submitted: dict) -> str:
         """Credentials are a pair, and the form never shows the stored password.

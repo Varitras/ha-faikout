@@ -197,6 +197,15 @@ def _flow_keys(source=None):
                         if is_error:
                             used["error"] |= _strings(node.value, method, functions)
                 callee = _callee_name(node) if isinstance(node, ast.Call) else None
+                unreadable = callee in ("AbortFlow", "_abort_if_unique_id_mismatch") or (
+                    callee == "async_show_form"
+                    and any(
+                        k.arg == "errors"
+                        and not (isinstance(k.value, ast.Name) and k.value.id == "errors")
+                        for k in node.keywords
+                    )
+                )
+                assert not unreadable, f"cannot read the keys of {callee} at line {node.lineno}"
                 if callee == "async_abort":
                     for keyword in node.keywords:
                         if keyword.arg == "reason":

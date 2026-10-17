@@ -56,7 +56,9 @@
     "abort": {
       "mqtt_not_configured": "The MQTT integration must be set up before adding Faikout.",
       "already_configured": "This Faikout module is already configured.",
-      "module_renamed": "The module was renamed. Its existing entry now follows the new name."
+      "module_renamed": "The module was renamed. Its existing entry now follows the new name.",
+      "rename_other_broker": "This module is already set up through a different broker. Point that entry at this broker in its options, then try again.",
+      "rename_old_name_still_announced": "This module is already set up under its old name, which the broker still announces. Clear the retained messages on the old name's state topics, then try again."
     }
   },
   "options": {
@@ -65,7 +67,7 @@
         "title": "Faikout options",
         "data": {
           "update_interval": "Update interval (seconds, 0 = every message)",
-          "use_own_mqtt": "Use own MQTT client (separate broker)",
+          "use_own_mqtt": "Use your own MQTT client (separate broker)",
           "mqtt_host": "MQTT broker host",
           "mqtt_port": "MQTT port",
           "mqtt_username": "MQTT username",

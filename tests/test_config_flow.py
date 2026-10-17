@@ -251,7 +251,8 @@ async def test_same_module_rediscovered_still_aborts(hass):
     )
 
     assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    # The existing entry is on Home Assistant's broker, this flow on another.
+    assert result["reason"] == "rename_other_broker"
 
 
 async def test_own_broker_unreachable_shows_error(hass):

@@ -56,7 +56,9 @@
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
       "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
-      "module_renamed": "Das Modul wurde umbenannt. Der bestehende Eintrag folgt jetzt dem neuen Namen."
+      "module_renamed": "Das Modul wurde umbenannt. Der bestehende Eintrag folgt jetzt dem neuen Namen.",
+      "rename_other_broker": "Dieses Modul ist bereits über einen anderen Broker eingerichtet. Diesen Eintrag in seinen Optionen auf diesen Broker umstellen und erneut versuchen.",
+      "rename_old_name_still_announced": "Dieses Modul ist bereits unter seinem alten Namen eingerichtet, den der Broker noch ankündigt. Die gespeicherten (retained) Nachrichten auf den State-Topics des alten Namens löschen und erneut versuchen."
     }
   },
   "options": {

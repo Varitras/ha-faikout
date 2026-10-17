@@ -5,8 +5,14 @@ host name, the broker address and the topics carrying them have to be masked
 before they are logged. That covers more than `_LOGGER` calls: the setup retry
 and reauth paths in Home Assistant log the exception message, so an exception
 raised there is a log line by another route. A behavioural test only covers
-the one line being written at the time; this reads the package instead, so a
-new call site is caught the day it appears.
+the one line being written at the time; this reads the package instead.
+
+What it reads: logger calls (any logger), every raised exception and every
+call to a class named like one, their positional and keyword arguments,
+f-strings, dict values and the variables they came from, and how a caught
+exception is passed on or chained. What it does not tell apart: the branches
+of an if/else (the nearest assignment above wins), class bodies, and a
+catch-all handler that cleans up and re-raises.
 """
 import ast
 import pathlib
@@ -229,6 +235,24 @@ def _handler_names(handler: ast.ExceptHandler) -> list[str]:
     return names
 
 
+def _is_own_domain_check(test: ast.AST) -> bool:
+    """`<x>.translation_domain == DOMAIN`, alone or as one part of an `and`."""
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+        return any(_is_own_domain_check(value) for value in test.values)
+    if not (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+    ):
+        return False
+    sides = [test.left, test.comparators[0]]
+    has_domain = any(isinstance(s, ast.Name) and s.id == "DOMAIN" for s in sides)
+    has_origin = any(
+        isinstance(s, ast.Attribute) and s.attr == "translation_domain" for s in sides
+    )
+    return has_domain and has_origin
+
+
 def _passed_on(handler: ast.ExceptHandler) -> list[ast.Raise]:
     """Raises that hand the caught exception on as it is, unless an `if` on its
     translation_domain only lets the integration's own, masked ones through."""
@@ -237,7 +261,7 @@ def _passed_on(handler: ast.ExceptHandler) -> list[ast.Raise]:
     def visit(nodes, vetted):
         for node in nodes:
             if isinstance(node, ast.If):
-                checks_origin = "translation_domain" in ast.unparse(node.test)
+                checks_origin = _is_own_domain_check(node.test)
                 visit(node.body, vetted or checks_origin)
                 visit(node.orelse, vetted)
                 continue
@@ -303,6 +327,22 @@ def _offenders_of(module: pathlib.Path, source: str) -> list[str]:
             ):
                 # Logged tracebacks print the cause in full: the library's text.
                 found.append(f"{module.name}:{node.lineno} chains {node.cause.id} as the cause")
+            if isinstance(node, ast.ExceptHandler):
+                for raise_node in ast.walk(node):
+                    # Without `from`, the caught exception rides along as the
+                    # context and a traceback prints it just the same.
+                    keeps_context = (
+                        isinstance(raise_node, ast.Raise)
+                        and raise_node.exc is not None
+                        and raise_node.cause is None
+                        and not (
+                            isinstance(raise_node.exc, ast.Name)
+                            and raise_node.exc.id == node.name
+                        )
+                    )
+                    if keeps_context:
+                        line = raise_node.lineno
+                        found.append(f"{module.name}:{line} keeps the caught exception as context")
         for call in ast.walk(scope):
             if not isinstance(call, ast.Call):
                 continue

@@ -95,7 +95,7 @@ type the hostname by hand — it is the middle part of the topics, the `GuestAC`
 
 #### TLS
 
-The own-broker mode can encrypt the connection. Two switches, because they are not the same decision:
+With your own MQTT broker, the connection can be encrypted. Two switches, because they are not the same decision:
 
 - **Use TLS** — encrypts the connection. The port moves to 8883 unless you set a different one. The one
   exception is 8883's counterpart: a deliberately entered `1883` cannot be told apart from the untouched
@@ -123,7 +123,7 @@ Reachable later via *Configure* on the integration entry:
   The module reports on every change, which for a running unit is more often than most people need and
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
   Set `0` to pass every message straight through. Availability changes always bypass this.
-- **Own MQTT client** — switch an existing entry between the two transports, with the broker details and
+- **Use your own MQTT client** — switch an existing entry between the two transports, with the broker details and
   the TLS switches described above. The form never shows the stored password: leave the field blank to
   keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
   the username. Clearing the username removes both.

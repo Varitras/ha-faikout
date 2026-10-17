@@ -126,14 +126,14 @@ class FaikoutTransport:
     def set_connection_listener(self, listener: Callable[[bool], None]) -> None:
         """Register a callback invoked with the live connection state.
 
-        Both transports report it: the own client from paho's callbacks, the HA
+        Both transports report it: the separate client from paho's callbacks, the HA
         transport from Home Assistant's MQTT connection status.
         """
 
     def set_auth_failure_listener(self, listener: Callable[[], None]) -> None:
         """Register a callback for credentials the broker rejects later.
 
-        Only the own client can hit this: it reconnects by itself, so a
+        Only the separate client can hit this: it reconnects by itself, so a
         rejection after setup would otherwise go unnoticed.
         """
 
