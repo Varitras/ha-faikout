@@ -148,6 +148,8 @@ async def test_successful_publish_is_silent(hass):
         "Info", (), {"rc": paho.MQTT_ERR_SUCCESS}
     )()
     await transport.async_publish("command/x/control", "{}")
+    # Exactly topic and payload: paho's defaults are QoS 0 and not retained.
+    transport._client.publish.assert_called_once_with("command/x/control", "{}")
 
 
 async def test_service_call_reports_publish_failure(hass):
