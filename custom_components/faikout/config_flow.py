@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import probatio
 from homeassistant.components import mqtt
 from homeassistant.config_entries import (
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlowWithReload,
@@ -213,6 +214,31 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         pending = {CONF_USE_OWN_MQTT: bool(self._broker), **self._broker}
         return self._broker_id(entry.options) == self._broker_id(pending)
 
+    def _renamed_entry(self, host: str, mac) -> ConfigEntry | None:
+        """The entry this module had under another name, when it is safe to follow.
+
+        Same MAC, new name: the module was renamed and its topics moved with it.
+        Only on the entry's own broker, though - from another broker the entry
+        would keep its broker and could land on a topic another entry there
+        controls - and only once the old name is no longer announced with this
+        MAC, since a retained status can outlive the rename.
+        """
+        for entry in self._async_current_entries(include_ignore=False):
+            if entry.unique_id != self.unique_id:
+                continue
+            old = entry.data.get(CONF_HOST)
+            still_announced = normalize_mac(self._discovered.get(old)) == normalize_mac(mac)
+            if old == host or still_announced or not self._same_broker(entry):
+                return None
+            return entry
+        return None
+
+    def _follow_rename(self, entry: ConfigEntry, host: str) -> ConfigFlowResult:
+        # The title follows as well: the device name already does.
+        return self.async_update_reload_and_abort(
+            entry, title=host, data_updates={CONF_HOST: host}, reason="module_renamed"
+        )
+
     @staticmethod
     def _entry_data(host: str, mac) -> dict:
         """Freeze the identity at setup time so it never shifts later."""
@@ -247,9 +273,10 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                # Same MAC under a new name: the module was renamed, and its
-                # topics moved with it.
-                self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+                renamed = self._renamed_entry(host, mac)
+                if renamed is not None:
+                    return self._follow_rename(renamed, host)
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=host, data=self._entry_data(host, mac)
                 )
@@ -323,7 +350,10 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+                renamed = self._renamed_entry(host, mac)
+                if renamed is not None:
+                    return self._follow_rename(renamed, host)
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=host,
                     data=self._entry_data(host, mac),

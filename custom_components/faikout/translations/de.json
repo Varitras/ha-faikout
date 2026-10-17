@@ -55,7 +55,8 @@
     },
     "abort": {
       "mqtt_not_configured": "Die MQTT-Integration muss eingerichtet sein, bevor Faikout hinzugefügt wird.",
-      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert."
+      "already_configured": "Dieses Faikout-Modul ist bereits konfiguriert.",
+      "module_renamed": "Das Modul wurde umbenannt. Der bestehende Eintrag folgt jetzt dem neuen Namen."
     }
   },
   "options": {
