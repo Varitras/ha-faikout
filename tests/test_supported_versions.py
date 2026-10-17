@@ -71,3 +71,21 @@ def test_the_claimed_minimum_provides_the_registry_api_we_call():
         f"the installed Home Assistant is older than the claimed minimum "
         f"{_claimed_minimum()}"
     )
+
+
+def test_every_tool_check_sh_runs_is_pinned_for_ci():
+    """An unpinned tool turns CI red the day it ships a new rule.
+
+    pytest itself is exempt: each lane's pinned phcc release brings its own.
+    """
+    script = (REPO / "check.sh").read_text(encoding="utf-8")
+    tools = set(re.findall(r'"\$PYTHON" -m ([\w-]+)', script)) - {"pytest"}
+    if "--cov" in script:
+        tools.add("pytest-cov")
+    pinned = {
+        line.split("==")[0].strip()
+        for line in (REPO / "requirements-ci.txt").read_text(encoding="utf-8").splitlines()
+        if "==" in line and not line.lstrip().startswith("#")
+    }
+    assert tools, "found no tools in check.sh - the scan is broken"
+    assert tools <= pinned, f"not pinned in requirements-ci.txt: {sorted(tools - pinned)}"

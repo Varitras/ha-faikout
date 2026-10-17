@@ -209,7 +209,7 @@ pytest -q
 vulture — and needs those tools in the same environment:
 
 ```bash
-pip install pytest-cov ruff mypy vulture
+pip install -r requirements-ci.txt
 PYTHON=.venv/bin/python ./check.sh
 ```
 

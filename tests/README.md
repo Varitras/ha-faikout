@@ -11,6 +11,7 @@ it holds.
 | `test_supported_versions.py::test_the_claimed_minimum_provides_the_registry_api_we_call` | that minimum really provides the device registry API the coordinator calls |
 | `test_supported_versions.py::test_every_action_is_pinned_or_a_known_moving_ref` | every workflow action is version-pinned, bar two deliberate moving refs |
 | `test_supported_versions.py::test_workflow_directory_is_not_empty` | the guard above actually found files to scan |
+| `test_supported_versions.py::test_every_tool_check_sh_runs_is_pinned_for_ci` | every tool check.sh runs is pinned for CI, so a tool release cannot turn CI red unannounced |
 | `test_log_hygiene.py::test_nothing_identifying_reaches_a_log_in_the_clear` | no logger call or exception message carries a host, MAC or topic unmasked |
 | `test_log_hygiene.py::test_the_package_has_modules_to_scan` | the guard above actually found modules to scan |
 | `test_log_hygiene.py::test_guard_resolves_the_assignment_in_force_at_the_raise` | the guard follows a variable to the value it holds at the raise |

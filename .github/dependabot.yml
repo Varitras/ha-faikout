@@ -10,9 +10,19 @@ updates:
       actions:
         patterns: ["*"]
 
-# No pip entry on purpose. requirements-test.txt carries a floor (pytest>=8.0)
-# rather than a pin, so there is nothing for the bot to raise. The versions that
-# are really pinned - the Home Assistant and phcc releases each test lane
-# installs - live in the workflow matrix, which Dependabot does not read. Those
-# stay a manual decision, which is the point: the lanes deliberately test the
-# current, the minimum and the upcoming release.
+  # Only the pinned check tools. requirements-test.txt carries a floor
+  # (pytest>=8.0), not a pin, and the Home Assistant and phcc releases each lane
+  # installs live in the workflow matrix: those stay a manual decision, since the
+  # lanes deliberately test the current, the minimum and the upcoming release.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    allow:
+      - dependency-name: mypy
+      - dependency-name: pytest-cov
+      - dependency-name: ruff
+      - dependency-name: vulture
+    groups:
+      check-tools:
+        patterns: ["*"]

@@ -59,7 +59,7 @@ jobs:
           # homeassistant and provides the `hass` fixture the integration tests
           # need; paho-mqtt is needed for the own-MQTT transport test.
           pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}" paho-mqtt
-          pip install pytest-cov ruff mypy vulture
+          pip install -r requirements-ci.txt
       - name: Show versions under test
         run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
       - run: ./check.sh
