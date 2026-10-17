@@ -56,9 +56,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # pytest-homeassistant-custom-component pulls in a matching
-          # homeassistant and provides the `hass` fixture the integration tests
-          # need; paho-mqtt is needed for the own-MQTT transport test.
-          pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}" paho-mqtt
+          # homeassistant, paho-mqtt and the `hass` fixture the integration
+          # tests need.
+          pip install "pytest-homeassistant-custom-component${{ matrix.phcc }}"
           pip install -r requirements-ci.txt
       - name: Show versions under test
         run: pip show homeassistant pytest-homeassistant-custom-component | grep -E "^(Name|Version)"
