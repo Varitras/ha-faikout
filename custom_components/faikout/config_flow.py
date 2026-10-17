@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 
 import probatio
 from homeassistant.components import mqtt
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -44,7 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 DISCOVERY_SECONDS = 3.0
 
 
-def _broker_from_input(user_input: dict) -> dict:
+def _broker_from_input(user_input: Mapping) -> dict:
     return {
         CONF_MQTT_HOST: user_input[CONF_MQTT_HOST].strip(),
         CONF_MQTT_PORT: int(user_input.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
@@ -53,6 +58,38 @@ def _broker_from_input(user_input: dict) -> dict:
         CONF_MQTT_TLS: bool(user_input.get(CONF_MQTT_TLS, False)),
         CONF_MQTT_TLS_INSECURE: bool(user_input.get(CONF_MQTT_TLS_INSECURE, False)),
     }
+
+
+def _prefilled(value) -> dict:
+    """Show a stored value in an optional field without making it its default.
+
+    The frontend leaves an emptied optional field out of the submission, and a
+    default would then put the stored value straight back: the field could
+    never be cleared.
+    """
+    return {"suggested_value": value}
+
+
+async def _probe_broker(hass, broker: dict) -> tuple[dict, str | None]:
+    """Connect with these details; the modules found, or a form error key."""
+    try:
+        hosts = await async_discover_on_broker(
+            hass,
+            broker[CONF_MQTT_HOST],
+            effective_port(broker[CONF_MQTT_PORT], broker[CONF_MQTT_TLS]),
+            broker[CONF_MQTT_USERNAME] or None,
+            broker[CONF_MQTT_PASSWORD] or None,
+            DISCOVERY_SECONDS,
+            broker[CONF_MQTT_TLS],
+            broker[CONF_MQTT_TLS_INSECURE],
+        )
+    except MqttConnectionRefused as err:
+        _LOGGER.debug("Broker refused the connection: %s", error_kind(err))
+        return {}, "invalid_auth" if err.is_auth_failure else "cannot_connect"
+    except Exception as err:  # noqa: BLE001 - any other connect problem
+        _LOGGER.debug("Broker check failed: %s", error_kind(err))
+        return {}, "cannot_connect"
+    return hosts, None
 
 
 def _broker_schema(defaults=None) -> probatio.Schema:
@@ -64,14 +101,15 @@ def _broker_schema(defaults=None) -> probatio.Schema:
                 CONF_MQTT_HOST, default=d.get(CONF_MQTT_HOST, probatio.UNDEFINED)
             ): selector.TextSelector(),
             probatio.Optional(
-                CONF_MQTT_PORT, default=d.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)
+                CONF_MQTT_PORT,
+                description=_prefilled(d.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
                 )
             ),
             probatio.Optional(
-                CONF_MQTT_USERNAME, default=d.get(CONF_MQTT_USERNAME, "")
+                CONF_MQTT_USERNAME, description=_prefilled(d.get(CONF_MQTT_USERNAME, ""))
             ): selector.TextSelector(),
             probatio.Optional(CONF_MQTT_PASSWORD, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
@@ -209,7 +247,9 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                self._abort_if_unique_id_configured()
+                # Same MAC under a new name: the module was renamed, and its
+                # topics moved with it.
+                self._abort_if_unique_id_configured(updates={CONF_HOST: host})
                 return self.async_create_entry(
                     title=host, data=self._entry_data(host, mac)
                 )
@@ -231,28 +271,11 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             broker = _broker_from_input(user_input)
-            try:
-                self._discovered = await async_discover_on_broker(
-                    self.hass,
-                    broker[CONF_MQTT_HOST],
-                    effective_port(broker[CONF_MQTT_PORT], broker[CONF_MQTT_TLS]),
-                    broker[CONF_MQTT_USERNAME] or None,
-                    broker[CONF_MQTT_PASSWORD] or None,
-                    DISCOVERY_SECONDS,
-                    broker[CONF_MQTT_TLS],
-                    broker[CONF_MQTT_TLS_INSECURE],
-                )
-            except MqttConnectionRefused as err:
-                _LOGGER.debug("Broker refused the connection: %s", error_kind(err))
-                errors["base"] = (
-                    "invalid_auth" if err.is_auth_failure else "cannot_connect"
-                )
-            except Exception as err:  # noqa: BLE001 - any other connect problem
-                _LOGGER.debug("Broker discovery failed: %s", error_kind(err))
-                errors["base"] = "cannot_connect"
-            else:
+            self._discovered, error = await _probe_broker(self.hass, broker)
+            if error is None:
                 self._broker = broker
                 return await self.async_step_own_host()
+            errors["base"] = error
 
         return self.async_show_form(
             step_id="own_mqtt", data_schema=_broker_schema(), errors=errors
@@ -270,34 +293,14 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             broker = _broker_from_input(user_input)
-            try:
-                await async_discover_on_broker(
-                    self.hass,
-                    broker[CONF_MQTT_HOST],
-                    effective_port(broker[CONF_MQTT_PORT], broker[CONF_MQTT_TLS]),
-                    broker[CONF_MQTT_USERNAME] or None,
-                    broker[CONF_MQTT_PASSWORD] or None,
-                    DISCOVERY_SECONDS,
-                    broker[CONF_MQTT_TLS],
-                    broker[CONF_MQTT_TLS_INSECURE],
-                )
-            except MqttConnectionRefused as err:
-                errors["base"] = (
-                    "invalid_auth" if err.is_auth_failure else "cannot_connect"
-                )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Reauth broker check failed: %s", error_kind(err))
-                errors["base"] = "cannot_connect"
-            else:
-                # Only the credentials change; host stays what the entry uses.
-                # Deliberately not async_update_reload_and_abort: that schedules
-                # a reload *and* the options update fires our own update
-                # listener, which reloads too - two reconnects per reauth. The
-                # listener alone is enough.
-                self.hass.config_entries.async_update_entry(
+            _, error = await _probe_broker(self.hass, broker)
+            if error is None:
+                # The reload is explicit: an entry whose setup the broker
+                # rejected never got as far as anything that would reload it.
+                return self.async_update_reload_and_abort(
                     entry, options={**entry.options, **broker}
                 )
-                return self.async_abort(reason="reauth_successful")
+            errors["base"] = error
 
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -320,7 +323,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._duplicate_of_existing(host, mac):
                     return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(device_id_for(mac, host))
-                self._abort_if_unique_id_configured()
+                self._abort_if_unique_id_configured(updates={CONF_HOST: host})
                 return self.async_create_entry(
                     title=host,
                     data=self._entry_data(host, mac),
@@ -351,7 +354,7 @@ class FaikoutConfigFlow(ConfigFlow, domain=DOMAIN):
         return hosts
 
 
-class FaikoutOptionsFlow(OptionsFlow):
+class FaikoutOptionsFlow(OptionsFlowWithReload):
     """Options: update throttle and an optional own MQTT client."""
 
     def _password_to_store(self, submitted: dict) -> str:
@@ -369,6 +372,26 @@ class FaikoutOptionsFlow(OptionsFlow):
         if typed:
             return typed
         return self.config_entry.options.get(CONF_MQTT_PASSWORD, "")
+
+    async def _check_changed_broker(self, submitted: dict) -> str | None:
+        """Probe a broker the form changed, before it is saved.
+
+        Saved unchecked, a mistyped host only surfaces after the reload, as an
+        endless setup retry the user has no form to correct in.
+        """
+        if not submitted.get(CONF_USE_OWN_MQTT):
+            return None
+        broker = _broker_from_input(submitted)
+        stored = self.config_entry.options
+        unchanged = (
+            stored.get(CONF_USE_OWN_MQTT)
+            and stored.get(CONF_MQTT_HOST)
+            and _broker_from_input(stored) == broker
+        )
+        if unchanged:
+            return None
+        _, error = await _probe_broker(self.hass, broker)
+        return error
 
     async def async_step_init(
         self, user_input: dict | None = None
@@ -390,7 +413,10 @@ class FaikoutOptionsFlow(OptionsFlow):
                     cleaned[CONF_MQTT_PORT] = int(cleaned[CONF_MQTT_PORT])
                 cleaned[CONF_MQTT_PASSWORD] = self._password_to_store(cleaned)
                 cleaned.pop(CONF_MQTT_CLEAR_PASSWORD, None)  # an action, not a setting
-                return self.async_create_entry(data=cleaned)
+                error = await self._check_changed_broker(cleaned)
+                if error is None:
+                    return self.async_create_entry(data=cleaned)
+                errors["base"] = error
 
         o = self.config_entry.options
         schema = probatio.Schema(
@@ -412,24 +438,23 @@ class FaikoutOptionsFlow(OptionsFlow):
                     default=o.get(CONF_USE_OWN_MQTT, False),
                 ): selector.BooleanSelector(),
                 probatio.Optional(
-                    CONF_MQTT_HOST,
-                    default=o.get(CONF_MQTT_HOST, ""),
+                    CONF_MQTT_HOST, description=_prefilled(o.get(CONF_MQTT_HOST, ""))
                 ): selector.TextSelector(),
                 probatio.Optional(
                     CONF_MQTT_PORT,
-                    default=o.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT),
+                    description=_prefilled(o.get(CONF_MQTT_PORT, DEFAULT_MQTT_PORT)),
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=1, max=65535, step=1, mode=selector.NumberSelectorMode.BOX
                     )
                 ),
                 probatio.Optional(
-                    CONF_MQTT_USERNAME,
-                    default=o.get(CONF_MQTT_USERNAME, ""),
+                    CONF_MQTT_USERNAME, description=_prefilled(o.get(CONF_MQTT_USERNAME, ""))
                 ): selector.TextSelector(),
-                # No default on purpose: the schema is serialised into the form
-                # response, so a default would hand the stored password to the
-                # browser. Blank means "unchanged"; see _password_to_store.
+                # Neither default nor suggested value: the schema is serialised
+                # into the form response, so either would hand the stored
+                # password to the browser. Blank means "unchanged"; see
+                # _password_to_store.
                 probatio.Optional(
                     CONF_MQTT_PASSWORD, default=""
                 ): selector.TextSelector(

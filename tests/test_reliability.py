@@ -372,7 +372,7 @@ async def test_paho_message_reaches_the_callback_on_the_event_loop(hass):
 
 async def test_options_change_reloads_the_entry(hass):
     """Changing the update interval must actually take effect."""
-    from custom_components.faikout.const import CONF_UPDATE_INTERVAL
+    from custom_components.faikout.const import CONF_UPDATE_INTERVAL, CONF_USE_OWN_MQTT
 
     first = make_transport()
     entry = await setup_integration(hass, first)
@@ -381,8 +381,9 @@ async def test_options_change_reloads_the_entry(hass):
     with patch(
         "custom_components.faikout.create_transport", return_value=second
     ):
-        hass.config_entries.async_update_entry(
-            entry, options={CONF_UPDATE_INTERVAL: 30}
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_UPDATE_INTERVAL: 30, CONF_USE_OWN_MQTT: False}
         )
         await hass.async_block_till_done()
 

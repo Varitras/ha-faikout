@@ -36,6 +36,23 @@ def _no_discovery_delay():
 
 
 @pytest.fixture
+def options_flow_environment():
+    """Saving options reloads the entry and probes a changed broker.
+
+    Neither may reach a real broker here; a test about a failing probe patches
+    it again inside.
+    """
+    with (
+        patch("custom_components.faikout.async_setup_entry", return_value=True),
+        patch(
+            "custom_components.faikout.config_flow.async_discover_on_broker",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        yield
+
+
+@pytest.fixture
 def mock_setup_entry():
     with patch(
         "custom_components.faikout.async_setup_entry", return_value=True
@@ -306,25 +323,30 @@ def _entry_with_credentials(hass) -> MockConfigEntry:
     return entry
 
 
-def _schema_default(result, key) -> object:
-    """What the form would prefill: the schema's default for one field."""
-    for marker in result["data_schema"].schema:
-        if marker == key:
-            default = marker.default
-            return default() if callable(default) else default
-    raise AssertionError(f"{key} is not in the form")
 
 
 async def test_options_form_does_not_hand_the_stored_password_to_the_browser(hass):
-    """The schema is serialised into the form response, defaults included."""
+    """Checked on what the frontend receives, not on the schema object.
+
+    Defaults and suggested values are both serialised into the form response.
+    """
+    import probatio
+    from homeassistant.helpers import config_validation as cv
+
     entry = _entry_with_credentials(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    sent = repr(
+        probatio.to_field_list(
+            result["data_schema"], custom_serializer=cv.custom_serializer
+        )
+    )
 
-    assert _schema_default(result, CONF_MQTT_USERNAME) == "faikout"
-    assert _schema_default(result, CONF_MQTT_PASSWORD) != "stored-secret"
+    assert "faikout" in sent  # the username is still shown
+    assert "stored-secret" not in sent
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_options_flow_keeps_the_stored_password_when_left_empty(hass):
     """Credentials are a pair: a blank password beside the same username means
     "unchanged", not "none" - the form no longer shows the old one to re-type."""
@@ -347,6 +369,7 @@ async def test_options_flow_keeps_the_stored_password_when_left_empty(hass):
     assert result["data"][CONF_MQTT_PASSWORD] == "stored-secret"
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_options_flow_can_clear_only_the_password(hass):
     """A username without a password is a configuration paho accepts, and the
     form cannot show the stored password to be deleted - so clearing it is an
@@ -373,6 +396,7 @@ async def test_options_flow_can_clear_only_the_password(hass):
     assert CONF_MQTT_CLEAR_PASSWORD not in result["data"], "an action, not a setting"
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_options_flow_never_stores_a_password_without_a_username(hass):
     """The form says clearing the username removes both; the code has to mean it
     even when a password was typed in the same edit."""
@@ -395,6 +419,7 @@ async def test_options_flow_never_stores_a_password_without_a_username(hass):
     assert result["data"][CONF_MQTT_PASSWORD] == ""
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_options_flow_drops_the_password_with_the_username(hass):
     """Clearing the username is the way to an anonymous broker."""
     entry = _entry_with_credentials(hass)
@@ -812,6 +837,7 @@ async def test_options_report_rejected_credentials_on_the_form(hass):
     assert result["errors"] == {"base": "invalid_auth"}
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_options_do_not_probe_when_only_the_interval_changes(hass):
     entry = _entry_with_credentials(hass)
     probe = AsyncMock(side_effect=OSError("must not be called"))
@@ -826,6 +852,7 @@ async def test_options_do_not_probe_when_only_the_interval_changes(hass):
     assert probe.await_count == 0
 
 
+@pytest.mark.usefixtures("options_flow_environment")
 async def test_an_emptied_username_reaches_the_flow_as_a_missing_key(hass):
     """The frontend drops an emptied optional text field from the submission.
 
