@@ -16,17 +16,39 @@ import pytest
 PACKAGE = pathlib.Path(__file__).parents[1] / "custom_components/faikout"
 
 # Names that identify the installation rather than describe the problem.
-IDENTIFYING = frozenset({"host", "_host", "topic", "device_id", "mac", "_mac"})
+IDENTIFYING = frozenset(
+    {"host", "_host", "topic", "device_id", "mac", "_mac", "title", "username", "password"}
+)
+
+# The same values read out of a config entry by key.
+IDENTIFYING_KEYS = frozenset(
+    {
+        "CONF_HOST",
+        "CONF_MAC",
+        "CONF_DEVICE_ID",
+        "CONF_MQTT_HOST",
+        "CONF_MQTT_USERNAME",
+        "CONF_MQTT_PASSWORD",
+    }
+)
 
 # Passing one of the above is fine as the argument of these.
 MASKS = frozenset({"log_identifier", "masked_topic", "error_kind"})
 
 LOG_LEVELS = frozenset({"debug", "info", "warning", "error", "exception", "critical"})
 
-# Exceptions whose message Home Assistant writes to its own log.
-LOGGED_EXCEPTIONS = frozenset(
-    {"ConfigEntryNotReady", "ConfigEntryAuthFailed", "HomeAssistantError"}
+# Home Assistant writes the message of the exceptions an integration raises to
+# its own log, whatever the class. These name endings catch them when they are
+# built without being raised on the spot.
+EXCEPTION_ENDINGS = ("Error", "NotReady", "AuthFailed", "Failed", "Exception")
+
+# Keywords that say how to translate or log, not what.
+NOT_MESSAGE = frozenset(
+    {"translation_domain", "translation_key", "exc_info", "stack_info", "stacklevel"}
 )
+
+# How far a chain of `a = ...; b = a` is followed.
+MAX_INDIRECTION = 5
 
 
 def _identifying_names(node: ast.AST) -> set[str]:
@@ -36,6 +58,12 @@ def _identifying_names(node: ast.AST) -> set[str]:
             found.add(child.attr)
         elif isinstance(child, ast.Name) and child.id in IDENTIFYING:
             found.add(child.id)
+        elif (
+            isinstance(child, ast.Subscript)
+            and isinstance(child.slice, ast.Name)
+            and child.slice.id in IDENTIFYING_KEYS
+        ):
+            found.add(child.slice.id)
     return found
 
 
@@ -47,17 +75,30 @@ def _is_masked(node: ast.AST) -> bool:
     )
 
 
-def _reaches_a_log(call: ast.Call) -> bool:
-    is_logger_call = (
-        isinstance(call.func, ast.Attribute)
-        and call.func.attr in LOG_LEVELS
-        and isinstance(call.func.value, ast.Name)
-        and call.func.value.id == "_LOGGER"
-    )
-    is_logged_exception = (
-        isinstance(call.func, ast.Name) and call.func.id in LOGGED_EXCEPTIONS
-    )
-    return is_logger_call or is_logged_exception
+def _callee(call: ast.Call) -> str:
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    return ""
+
+
+def _is_logger_call(call: ast.Call) -> bool:
+    """Any logger, whatever it is called: _LOGGER, logger, self.logger, logging."""
+    if not isinstance(call.func, ast.Attribute) or call.func.attr not in LOG_LEVELS:
+        return False
+    receiver = call.func.value
+    if isinstance(receiver, ast.Attribute):
+        return "log" in receiver.attr.lower()
+    return isinstance(receiver, ast.Name) and "log" in receiver.id.lower()
+
+
+def _raised_calls(scope: ast.AST) -> set[int]:
+    return {
+        id(node.exc)
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)
+    }
 
 
 def _caught_exceptions(function: ast.AST) -> set[str]:
@@ -71,10 +112,10 @@ def _caught_exceptions(function: ast.AST) -> set[str]:
     }
 
 
-def _assignments(function: ast.AST) -> dict[str, list[ast.Assign]]:
-    """Simple `name = value` assignments in a function, in source order."""
+def _assignments(scope: ast.AST) -> dict[str, list[ast.Assign]]:
+    """Simple `name = value` assignments in a scope, in source order."""
     values: dict[str, list[ast.Assign]] = {}
-    for node in ast.walk(function):
+    for node in ast.walk(scope):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -82,7 +123,7 @@ def _assignments(function: ast.AST) -> dict[str, list[ast.Assign]]:
     return values
 
 
-def _value_in_force(name: str, at: ast.Call, assignments) -> ast.AST | None:
+def _value_in_force(name: str, at: ast.AST, assignments) -> ast.AST | None:
     """The assignment a call actually sees: the nearest one above it. The
     last one in the function would let a harmless reassignment below the
     raise hide what was raised."""
@@ -90,39 +131,71 @@ def _value_in_force(name: str, at: ast.Call, assignments) -> ast.AST | None:
     return before[-1].value if before else None
 
 
+def _leaves(node: ast.AST, at: ast.AST, assignments, depth: int = 0):
+    """What a message argument really carries: f-strings, dict values and
+    variables unfolded, so a value built up before the call cannot hide."""
+    if isinstance(node, ast.Name) and depth < MAX_INDIRECTION:
+        value = _value_in_force(node.id, at, assignments)
+        if value is not None:
+            yield from _leaves(value, at, assignments, depth + 1)
+            return
+    if isinstance(node, ast.JoinedStr):
+        for part in node.values:
+            if isinstance(part, ast.FormattedValue):
+                yield from _leaves(part.value, at, assignments, depth)
+        return
+    if isinstance(node, ast.Dict):
+        for value in node.values:
+            yield from _leaves(value, at, assignments, depth)
+        return
+    yield node
+
+
 def _message_parts(call: ast.Call, assignments):
-    """The pieces of a call that reach the log, with f-strings and simple
-    variables unfolded: a message built into a name first and raised after
-    would otherwise hide what it interpolates."""
-    is_exception = isinstance(call.func, ast.Name)
-    arguments = call.args if is_exception else call.args[1:]
+    arguments = [*call.args]
+    arguments += [kw.value for kw in call.keywords if kw.arg not in NOT_MESSAGE]
     for argument in arguments:
-        if isinstance(argument, ast.Name):
-            argument = _value_in_force(argument.id, call, assignments) or argument
-        if isinstance(argument, ast.JoinedStr):
-            for part in argument.values:
-                if isinstance(part, ast.FormattedValue):
-                    yield part.value
-        else:
-            yield argument
+        yield from _leaves(argument, call, assignments)
 
 
 def _offenders(module: pathlib.Path) -> list[str]:
     return _offenders_of(module, module.read_text(encoding="utf-8"))
 
 
+def _module_level(tree: ast.Module) -> ast.Module:
+    """The module with its function bodies left out, scanned as one scope."""
+    body = [
+        node
+        for node in tree.body
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    return ast.Module(body=body, type_ignores=[])
+
+
 def _offenders_of(module: pathlib.Path, source: str) -> list[str]:
     tree = ast.parse(source)
+    scopes = [_module_level(tree)] + [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
     found = []
-    for scope in ast.walk(tree):
-        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+    for scope in scopes:
         assignments = _assignments(scope)
         caught = _caught_exceptions(scope)
+        raised = _raised_calls(scope)
         for call in ast.walk(scope):
-            if not isinstance(call, ast.Call) or not _reaches_a_log(call):
+            if not isinstance(call, ast.Call):
                 continue
-            if any(keyword.arg == "exc_info" for keyword in call.keywords):
+            is_logger = _is_logger_call(call)
+            is_exception = id(call) in raised or _callee(call).endswith(EXCEPTION_ENDINGS)
+            if not (is_logger or is_exception):
+                continue
+            traceback = is_logger and (
+                _callee(call) == "exception"
+                or any(keyword.arg == "exc_info" for keyword in call.keywords)
+            )
+            if traceback:
                 # The traceback prints every message in the chain, ours and
                 # the library's alike.
                 found.append(f"{module.name}:{call.lineno} logs a traceback")

@@ -153,9 +153,8 @@ class FaikoutTransport:
         """Tear down the connection (no-op for the HA transport)."""
 
 
-def _publish_failed(topic: str, reason: str) -> HomeAssistantError:
+def _publish_failed(masked: str, reason: str) -> HomeAssistantError:
     """The error a failed command surfaces as, the same for both transports."""
-    masked = masked_topic(topic)
     return HomeAssistantError(
         f"Could not publish to {masked}: {reason}",
         translation_domain=DOMAIN,
@@ -191,7 +190,7 @@ class HaMqttTransport(FaikoutTransport):
             await mqtt.async_publish(self.hass, topic, payload)
         except HomeAssistantError as err:
             # Home Assistant's own message quotes the topic, hostname and all.
-            raise _publish_failed(topic, error_kind(err)) from err
+            raise _publish_failed(masked_topic(topic), error_kind(err)) from err
 
     async def async_stop(self) -> None:
         if self._unsub_status is not None:
@@ -417,7 +416,7 @@ class OwnMqttTransport(FaikoutTransport):
             # Most commonly MQTT_ERR_NO_CONN. Raising makes the service call
             # fail visibly instead of pretending the device got the command.
             raise _publish_failed(
-                topic, f"{self._paho.error_string(info.rc)} (rc={info.rc})"
+                masked_topic(topic), f"{self._paho.error_string(info.rc)} (rc={info.rc})"
             )
 
     async def async_stop(self) -> None:
