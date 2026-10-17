@@ -890,23 +890,22 @@ async def test_an_emptied_broker_host_is_reported(hass):
     assert result["errors"] == {CONF_MQTT_HOST: "host_required"}
 
 
-async def test_a_renamed_module_is_followed_to_its_new_topic(hass):
-    """Same MAC under a new hostname is the same device with new topics.
+RENAMED_MAC = "22:22:22:22:22:22"
 
-    The entry kept subscribing to the old name and the only way out was to
-    delete it and lose the entity customisations.
-    """
+
+def _entry_known_as(hass, host, options=None) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={
-            CONF_HOST: "old-name",
-            CONF_MAC: "22:22:22:22:22:22",
-            CONF_DEVICE_ID: "22:22:22:22:22:22",
-        },
-        unique_id="22:22:22:22:22:22",
+        title=host,
+        data={CONF_HOST: host, CONF_MAC: RENAMED_MAC, CONF_DEVICE_ID: RENAMED_MAC},
+        options=options or {},
+        unique_id=RENAMED_MAC,
     )
     entry.add_to_hass(hass)
+    return entry
 
+
+async def _pick_on_ha_mqtt(hass, discovered, host):
     result = await _start(hass)
     with (
         patch(
@@ -915,16 +914,59 @@ async def test_a_renamed_module_is_followed_to_its_new_topic(hass):
         ),
         patch(
             "custom_components.faikout.config_flow.FaikoutConfigFlow._discover_hosts",
-            AsyncMock(return_value={TEST_HOST: "22:22:22:22:22:22"}),
+            AsyncMock(return_value=discovered),
         ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"next_step_id": "ha_mqtt"}
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_HOST: TEST_HOST}
+        return await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_HOST: host}
         )
 
-    assert result["reason"] == "already_configured"
+
+async def test_a_renamed_module_is_followed_to_its_new_topic(hass):
+    """Same MAC under a new hostname is the same device with new topics.
+
+    The entry kept subscribing to the old name and the only way out was to
+    delete it and lose the entity customisations. The title follows too, as
+    the device name already does.
+    """
+    entry = _entry_known_as(hass, "old-name")
+
+    with patch("custom_components.faikout.async_setup_entry", return_value=True):
+        result = await _pick_on_ha_mqtt(hass, {TEST_HOST: RENAMED_MAC}, TEST_HOST)
+
+    assert result["reason"] == "module_renamed"
     assert entry.data[CONF_HOST] == TEST_HOST
-    assert entry.data[CONF_DEVICE_ID] == "22:22:22:22:22:22"
+    assert entry.title == TEST_HOST
+    assert entry.data[CONF_DEVICE_ID] == RENAMED_MAC
+
+
+async def test_a_module_found_on_another_broker_is_not_renamed(hass):
+    """The rename may only move an entry's topics on the broker it talks to.
+
+    Rewritten from a flow on another broker, the entry kept its own broker and
+    could end up on a topic another entry there already controls.
+    """
+    entry = _entry_known_as(
+        hass, "old-name", options={CONF_USE_OWN_MQTT: True, CONF_MQTT_HOST: "10.0.0.9"}
+    )
+
+    result = await _pick_on_ha_mqtt(hass, {TEST_HOST: RENAMED_MAC}, TEST_HOST)
+
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == "old-name"
+    assert entry.title == "old-name"
+
+
+async def test_a_name_the_module_still_announces_is_not_a_rename(hass):
+    """A retained status under a second name is not proof of a rename."""
+    entry = _entry_known_as(hass, "old-name")
+
+    result = await _pick_on_ha_mqtt(
+        hass, {"old-name": RENAMED_MAC, TEST_HOST: RENAMED_MAC}, TEST_HOST
+    )
+
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_HOST] == "old-name"
