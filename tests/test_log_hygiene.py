@@ -183,3 +183,88 @@ def f(self):
     raise ConfigEntryNotReady(message)
 '''
     assert _offenders_in(reassign_then_safe) == []
+
+
+# One snippet per form the guard once missed; each must be reported.
+LEAKS = {
+    "f-string message": '''
+def f(self):
+    _LOGGER.warning(f"lost {self.host}")
+''',
+    "traceback via exception()": '''
+def f(self):
+    _LOGGER.exception("failed")
+''',
+    "logger under another name": '''
+def f(self):
+    logger.info("lost %s", self.host)
+''',
+    "logger on an attribute": '''
+def f(self):
+    self.logger.info("lost %s", self.host)
+''',
+    "translation placeholder": '''
+def f(self):
+    raise HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="k",
+        translation_placeholders={"device": self.host},
+    )
+''',
+    "another exception class": '''
+def f(self):
+    raise UpdateFailed(f"no answer from {self.host}")
+''',
+    "exception through a module": '''
+def f(self):
+    raise exceptions.ConfigEntryError(f"no answer from {self.host}")
+''',
+    "exception class held in a variable": '''
+def f(self):
+    error_class = ConfigEntryNotReady
+    raise error_class(f"no answer from {self.host}")
+''',
+    "entry title": '''
+def f(entry):
+    raise HomeAssistantError(f"setup of {entry.title} failed")
+''',
+    "host read by config key": '''
+def f(entry):
+    _LOGGER.debug("connecting to %s", entry.data[CONF_HOST])
+''',
+    "password": '''
+def f(password):
+    _LOGGER.debug("trying %s", password)
+''',
+    "two-step variable": '''
+def f(self):
+    name = self.host
+    message = f"lost {name}"
+    raise HomeAssistantError(message)
+''',
+    "module level": '''
+_LOGGER.info("loaded for %s", host)
+''',
+}
+
+
+@pytest.mark.parametrize("source", LEAKS.values(), ids=LEAKS.keys())
+def test_guard_reports_each_form_it_once_missed(source):
+    assert _offenders_in(source)
+
+
+def test_guard_accepts_masked_values_in_every_form():
+    """The counter-check: the same forms, masked, are fine."""
+    masked = '''
+def f(self, entry, err):
+    _LOGGER.warning(f"lost {log_identifier(self.host)}")
+    logger.info("lost %s", masked_topic(self.topic))
+    device = log_identifier(self.host)
+    raise HomeAssistantError(
+        f"no answer from {device}: {error_kind(err)}",
+        translation_domain=DOMAIN,
+        translation_key="k",
+        translation_placeholders={"device": device, "reason": error_kind(err)},
+    )
+'''
+    assert _offenders_in(masked) == []
