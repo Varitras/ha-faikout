@@ -441,9 +441,10 @@ async def test_fresh_values_after_a_return_are_not_held_back(hass, freezer):
 
 
 async def test_a_stale_status_does_not_undo_a_known_indoor_unit_loss(hass):
-    """The firmware rewrites /status only on a control change; the link it
-    reports there can be hours old, while the module topic is re-sent on every
-    change. After a reconnect the broker hands both over again.
+    """The firmware rewrites /status on a control change or a module connect
+    (or with live status/debug on), so the link it reports there can be hours
+    old, while the module topic is re-sent with each status change. After a
+    reconnect the broker hands both over again.
     """
     transport = make_transport()
     await setup_integration(hass, transport)
