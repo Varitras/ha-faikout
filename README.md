@@ -157,8 +157,9 @@ When the module goes away or the broker connection drops, the entities turn *Una
 has lasted a minute; shorter dropouts are bridged and the last values stay. Coming back shows at once.
 Switching the unit off at the breaker therefore takes up to about two minutes to show: the broker
 notices the module is gone within 45 seconds (one and a half times its 30-second keepalive). A lost
-link between the module and the indoor unit is handled the same way, but only CN_WIRED modules
-report one; on S21, X50A and Altherma_S the firmware does not signal it.
+link between the module and the indoor unit is handled the same way when the module reports it, but
+the firmware hardly ever does: S21, X50A and Altherma_S never signal it, and CN_WIRED only in rare
+cases. If only the indoor unit loses power, the last values usually stay.
 
 ## What ends up in the log
 
