@@ -152,8 +152,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # if our own connection to the broker dies we stop hearing anything at
         # all, so entities must go unavailable on that too.
         self._broker = _Presence(hass, self._broker_presence_changed)
-        # The module's link to the indoor unit, from the status `online` field.
+        # The module's link to the indoor unit, from `online` on either topic.
         self._indoor_unit = _Presence(hass, self._availability_changed)
+        # Set once the state topic carries that link. From then on it alone
+        # counts: the firmware re-sends it on every change, while the retained
+        # status keeps whatever it said at the last control change.
+        self._indoor_unit_on_state_topic = False
         transport.set_connection_listener(self._transport_connection_changed)
         transport.set_auth_failure_listener(self._auth_failed)
         # Update throttle: 0 = real-time; N>0 = at most one push per N seconds,
@@ -187,12 +191,14 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # must not be overwritten by a success that is already out of date.
         self._broker.report(True)
         try:
-            self._unsub = await self._transport.async_subscribe(
-                status_topic(self.host), self._message_received
-            )
-            # Second subscription: bare state/<host> for device metadata + LWT.
+            # Bare state/<host> (device metadata, LWT, indoor-unit link) first:
+            # the broker hands retained messages over in subscription order, and
+            # a loss known there must not be preceded by a stale status.
             self._unsub_meta = await self._transport.async_subscribe(
                 state_topic(self.host), self._meta_received
+            )
+            self._unsub = await self._transport.async_subscribe(
+                status_topic(self.host), self._message_received
             )
         except Exception as err:
             if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
@@ -254,7 +260,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         payload = _decoded(msg.payload)
         if payload is None:
             return
-        flushed = False
+        pushed = False
         if payload in ("true", "false", "online", "offline"):
             module_up = payload in ("true", "online")
         else:
@@ -275,11 +281,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             # With the firmware's Home Assistant support on (its default), every
             # module message carries the indoor-unit link as "online".
             reports_indoor_unit = "online" in parsed
+            self._indoor_unit_on_state_topic |= reports_indoor_unit
             if reports_indoor_unit and self._indoor_unit.report(as_bool(parsed["online"])):
-                flushed = True
+                pushed = True
         if self._module.report(module_up):
-            flushed = True
-        if not flushed:
+            pushed = True
+        if not pushed:
             self._maybe_push()
 
     @callback
@@ -340,8 +347,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
-        if self._indoor_unit.report(_indoor_unit_online(new_state)):
-            return  # flushed already
+        status_counts = not self._indoor_unit_on_state_topic
+        if status_counts and self._indoor_unit.report(_indoor_unit_online(new_state)):
+            return  # pushed already
         self._maybe_push()
 
     @callback

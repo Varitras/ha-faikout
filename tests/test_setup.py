@@ -372,8 +372,9 @@ async def test_the_grace_is_a_minute(hass, loss):
 async def test_a_loss_reported_again_and_again_still_shows_after_a_minute(hass, freezer):
     """A module that keeps saying "indoor unit lost" must not push the deadline back.
 
-    Restarting the wait on every report would keep stale values live forever,
-    because the module repeats itself for as long as the link is down.
+    Restarting the wait on every report would keep stale values live for as
+    long as the module repeats itself faster than the grace (with live status
+    reporting on, for example).
     """
     transport = make_transport()
     await setup_integration(hass, transport)
@@ -439,20 +440,57 @@ async def test_fresh_values_after_a_return_are_not_held_back(hass, freezer):
     assert hass.states.get(CLIMATE).attributes["current_temperature"] == 25.0
 
 
-class _MetaFirstTransport(FakeTransport):
-    """The broker hands the retained module message over before the status."""
+async def test_a_stale_status_does_not_undo_a_known_indoor_unit_loss(hass):
+    """The firmware rewrites /status only on a control change; the link it
+    reports there can be hours old, while the module topic is re-sent on every
+    change. After a reconnect the broker hands both over again.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    transport.feed(state_topic(TEST_HOST), json.dumps({**HEARTBEAT, "online": False}))
+    await hass.async_block_till_done()
+    await outlast_grace(hass)
 
-    async def async_subscribe(self, topic, callback):
-        unsub = await super().async_subscribe(topic, callback)
-        if topic == state_topic(TEST_HOST):
-            self.feed(status_topic(TEST_HOST), json.dumps(STATUS_PAYLOAD))
-        return unsub
+    transport.feed(status_topic(TEST_HOST), json.dumps({**STATUS_PAYLOAD, "online": True}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_an_indoor_unit_loss_retained_at_startup_shows_at_once(hass):
+    transport = make_transport(
+        status={**STATUS_PAYLOAD, "online": True}, meta={**HEARTBEAT, "online": False}
+    )
+    await setup_integration(hass, transport)
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_fresh_values_after_an_indoor_unit_return_are_not_held_back(hass, freezer):
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
+    freezer.tick(timedelta(seconds=120))
+
+    transport.feed(state_topic(TEST_HOST), json.dumps({**HEARTBEAT, "online": False}))
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=61))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+    transport.feed(state_topic(TEST_HOST), json.dumps({**HEARTBEAT, "online": True}))
+    await hass.async_block_till_done()
+    transport.feed(status_topic(TEST_HOST), json.dumps({"home": 25.0}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).attributes["current_temperature"] == 25.0
 
 
 async def test_a_module_message_before_the_status_does_not_hold_it_back(hass):
-    transport = _MetaFirstTransport({state_topic(TEST_HOST): json.dumps(META_PAYLOAD)})
+    """The state topic is subscribed first, so its retained message comes first."""
+    transport = make_transport()
     await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
 
+    assert list(transport.subs) == [state_topic(TEST_HOST), status_topic(TEST_HOST)]
     assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
 
 
