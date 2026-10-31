@@ -36,6 +36,11 @@ from .transport import FaikoutTransport
 
 _LOGGER = logging.getLogger(__name__)
 
+# How long a loss must last before the entities show it. Short WLAN or broker
+# dropouts would otherwise flip every entity to unavailable and back, which
+# breaks history graphs and fires automations watching for "unavailable".
+OFFLINE_GRACE = 60
+
 
 def _decoded(payload) -> str | None:
     """Decode an MQTT payload, refusing anything oversized.
@@ -61,9 +66,57 @@ def _module_up(meta: dict) -> bool:
     """Whether a bare-topic JSON says the module itself is still there.
 
     The firmware's will and its clean close are {"up": false, ...}; every
-    message the module sends while running carries "up": true.
+    message the module sends while running carries "up": true. Its "online"
+    is not about the module: see _meta_received.
     """
-    return as_bool(meta.get("up", True)) and as_bool(meta.get("online", True))
+    return as_bool(meta.get("up", True))
+
+
+class _Presence:
+    """One source the entities depend on, with short losses bridged.
+
+    A loss shows only once it has lasted OFFLINE_GRACE; a return shows at once
+    and drops a pending loss. A loss reported before the source was ever seen
+    present (a retained will at startup) has nothing to bridge and shows at once.
+    """
+
+    def __init__(self, hass: HomeAssistant, on_change: Callable[[bool], None]) -> None:
+        self._hass = hass
+        self._on_change = on_change
+        self.shown = True
+        self._seen = False
+        self._timer: Callable[[], None] | None = None
+
+    @callback
+    def report(self, present: bool) -> bool:
+        """Take the latest reading; True when what the entities see changed now."""
+        if present:
+            self._seen = True
+            self.cancel()
+            return self._show(True)
+        if not self._seen:
+            return self._show(False)
+        if self.shown and self._timer is None:
+            self._timer = async_call_later(self._hass, OFFLINE_GRACE, self._expired)
+        return False
+
+    @callback
+    def cancel(self) -> None:
+        if self._timer is not None:
+            self._timer()
+            self._timer = None
+
+    @callback
+    def _expired(self, _now) -> None:
+        self._timer = None
+        self._show(False)
+
+    def _show(self, shown: bool) -> bool:
+        if shown == self.shown:
+            return False
+        self.shown = shown
+        self._on_change(shown)
+        return True
 
 
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
@@ -94,11 +147,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._registered_meta: dict | None = None
         # Module presence: the bare state/<host> topic doubles as the LWT
         # ({"up": false} when the module drops off MQTT). Optimistic until told otherwise.
-        self.module_online = True
-        # Broker link state. The module LWT only tells us the device dropped off
-        # MQTT; if our own connection to the broker dies we stop hearing anything
-        # at all, so entities must go unavailable on that too.
-        self.transport_online = True
+        self._module = _Presence(hass, self._module_presence_changed)
+        # Broker link. The module LWT only tells us the device dropped off MQTT;
+        # if our own connection to the broker dies we stop hearing anything at
+        # all, so entities must go unavailable on that too.
+        self._broker = _Presence(hass, self._broker_presence_changed)
+        # The module's link to the indoor unit, from `online` on either topic.
+        self._indoor_unit = _Presence(hass, self._availability_changed)
+        # Set once the state topic carries that link. From then on it alone
+        # counts: the firmware re-sends that topic with each status change,
+        # while the retained status is rewritten only on a control change, a
+        # module connect, or with live status/debug on - it can be hours old.
+        self._indoor_unit_on_state_topic = False
         transport.set_connection_listener(self._transport_connection_changed)
         transport.set_auth_failure_listener(self._auth_failed)
         # Update throttle: 0 = real-time; N>0 = at most one push per N seconds,
@@ -113,8 +173,14 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._flush_unsub: Callable[[], None] | None = None
 
     @property
-    def indoor_unit_online(self) -> bool:
-        return _indoor_unit_online(self.data)
+    def module_available(self) -> bool:
+        """The module and our broker link, as the entities should show them."""
+        return self._module.shown and self._broker.shown
+
+    @property
+    def indoor_unit_available(self) -> bool:
+        """The module's link to the indoor unit, as the entities should show it."""
+        return bool(self.data) and self._indoor_unit.shown
 
     @callback
     def set_update_interval(self, seconds) -> None:
@@ -122,13 +188,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_start(self) -> None:
         await self._transport.async_connect()
+        # Here, not after subscribing: a loss the transport reports meanwhile
+        # must not be overwritten by a success that is already out of date.
+        self._broker.report(True)
         try:
-            self._unsub = await self._transport.async_subscribe(
-                status_topic(self.host), self._message_received
-            )
-            # Second subscription: bare state/<host> for device metadata + LWT.
+            # Bare state/<host> (device metadata, LWT, indoor-unit link) first:
+            # brokers hand retained messages over in subscription order in
+            # practice, and a loss known there must not follow a stale status.
             self._unsub_meta = await self._transport.async_subscribe(
                 state_topic(self.host), self._meta_received
+            )
+            self._unsub = await self._transport.async_subscribe(
+                status_topic(self.host), self._message_received
             )
         except Exception as err:
             if isinstance(err, HomeAssistantError) and err.translation_domain == DOMAIN:
@@ -148,16 +219,33 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:
-        if connected == self.transport_online:
-            return
-        self.transport_online = connected
+        self._broker.report(connected)
+
+    @callback
+    def _broker_presence_changed(self, connected: bool) -> None:
         if not connected:
             _LOGGER.warning(
                 "Lost the MQTT connection carrying %s", log_identifier(self.host)
             )
-        # Availability changed for every entity — push immediately rather than
-        # letting the update throttle delay the bad news.
-        self.async_update_listeners()
+        self._availability_changed(connected)
+
+    @callback
+    def _module_presence_changed(self, online: bool) -> None:
+        # Once each way, and at info: a module the user switched off is not
+        # an error and not something they can act on, which is what Home
+        # Assistant's log-when-unavailable rule asks for.
+        message = (
+            "Module %s is reporting again" if online else "Module %s stopped reporting"
+        )
+        _LOGGER.info(message, log_identifier(self.host))
+        self._availability_changed(online)
+
+    @callback
+    def _availability_changed(self, _available: bool) -> None:
+        # Not through the update throttle: a loss past its grace, or a return,
+        # is exactly the news a user needs. Nor does it count as a data push,
+        # or the first fresh values after a return would wait out an interval.
+        self._push()
 
     @callback
     def _auth_failed(self) -> None:
@@ -173,9 +261,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         payload = _decoded(msg.payload)
         if payload is None:
             return
-        was_online = self.module_online
+        pushed = False
         if payload in ("true", "false", "online", "offline"):
-            self.module_online = payload in ("true", "online")
+            module_up = payload in ("true", "online")
         else:
             parsed = parse_device_meta(payload)
             if parsed is None:
@@ -189,24 +277,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             for key, value in parsed.items():
                 if key in self.device_meta or len(self.device_meta) < MAX_STATE_FIELDS:
                     self.device_meta[key] = value
-            self.module_online = _module_up(parsed)
+            module_up = _module_up(parsed)
             self._update_device_registry()
-        if self.module_online != was_online:
-            # Once each way, and at info: a module the user switched off is not
-            # an error and not something they can act on, which is what Home
-            # Assistant's log-when-unavailable rule asks for.
-            message = (
-                "Module %s is reporting again"
-                if self.module_online
-                else "Module %s stopped reporting"
-            )
-            _LOGGER.info(message, log_identifier(self.host))
-            # Availability, like a lost broker link, must not sit in the update
-            # throttle: "this device is gone" is exactly the news a user needs
-            # promptly, and holding it back shows stale values as live.
-            self._flush()
-            return
-        self._maybe_push()
+            # With the firmware's Home Assistant support on (its default), every
+            # module message carries the indoor-unit link as "online".
+            reports_indoor_unit = "online" in parsed
+            self._indoor_unit_on_state_topic |= reports_indoor_unit
+            if reports_indoor_unit and self._indoor_unit.report(as_bool(parsed["online"])):
+                pushed = True
+        if self._module.report(module_up):
+            pushed = True
+        if not pushed:
+            self._maybe_push()
 
     @callback
     def _update_device_registry(self) -> None:
@@ -266,10 +348,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
-        if _indoor_unit_online(new_state) != self.indoor_unit_online:
-            # Same rule as the module topic: availability never waits.
-            self._flush()
-            return
+        status_counts = not self._indoor_unit_on_state_topic
+        if status_counts and self._indoor_unit.report(_indoor_unit_online(new_state)):
+            return  # pushed already
         self._maybe_push()
 
     @callback
@@ -297,12 +378,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _flush(self) -> None:
-        # A flush that jumps the queue (availability change) makes any armed
+        """Push now and start the throttle window, once there is data to throttle."""
+        if self._pending is not None:
+            self._last_push = self.hass.loop.time()
+        self._push()
+
+    @callback
+    def _push(self) -> None:
+        # A push that jumps the queue (availability change) makes any armed
         # timer redundant; leaving it would fire one extra update later.
         if self._flush_unsub is not None:
             self._flush_unsub()
             self._flush_unsub = None
-        self._last_push = self.hass.loop.time()
         if self._pending is not None:
             self.async_set_updated_data(self._pending)
         else:
@@ -354,8 +441,12 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         if self._unsub_meta is not None:
             self._unsub_meta()
             self._unsub_meta = None
+        # Stopping the client reports its own disconnect, which would arm a
+        # grace timer; so timers are dropped only once it has stopped.
+        await self._transport.async_stop()
+        for presence in (self._module, self._broker, self._indoor_unit):
+            presence.cancel()
         if self._flush_unsub is not None:
             self._flush_unsub()
             self._flush_unsub = None
-        await self._transport.async_stop()
         await super().async_shutdown()

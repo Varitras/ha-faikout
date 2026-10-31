@@ -43,13 +43,9 @@ class FaikoutEntity(CoordinatorEntity[FaikoutCoordinator]):
 
     @property
     def available(self) -> bool:
-        return self._module_available and self.coordinator.indoor_unit_online
+        return self._module_available and self.coordinator.indoor_unit_available
 
     @property
     def _module_available(self) -> bool:
         """The module itself is reachable, whatever its link to the indoor unit."""
-        return (
-            super().available
-            and self.coordinator.module_online
-            and self.coordinator.transport_online
-        )
+        return super().available and self.coordinator.module_available

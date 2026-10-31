@@ -29,7 +29,7 @@ from custom_components.faikout.transport import (  # noqa: E402
 )
 
 from .conftest import STATUS_PAYLOAD, TEST_HOST  # noqa: E402
-from .ha_helpers import make_transport, setup_integration  # noqa: E402
+from .ha_helpers import make_transport, outlast_grace, setup_integration  # noqa: E402
 
 CLIMATE = f"climate.{TEST_HOST}"
 
@@ -186,6 +186,7 @@ async def test_entities_go_unavailable_when_broker_link_drops(hass):
 
     transport.listener(False)
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
     transport.listener(True)
@@ -582,7 +583,7 @@ async def test_first_state_is_not_delayed_by_the_throttle(hass):
 
 
 async def test_going_offline_is_not_delayed_by_the_throttle(hass):
-    """Availability must not wait: a stale value shown as live is worse."""
+    """Past the grace, availability must not wait for the interval as well."""
     from homeassistant.const import STATE_UNAVAILABLE as _UNAVAILABLE
 
     from custom_components.faikout.const import CONF_UPDATE_INTERVAL, state_topic
@@ -593,6 +594,7 @@ async def test_going_offline_is_not_delayed_by_the_throttle(hass):
 
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
+    await outlast_grace(hass)
 
     assert hass.states.get(CLIMATE).state == _UNAVAILABLE
 
@@ -732,7 +734,7 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     from custom_components.faikout.const import CONF_UPDATE_INTERVAL, state_topic
 
     transport = make_transport()
-    entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
+    entry = await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
     coordinator = entry.runtime_data
     pushes = []
     coordinator.async_add_listener(lambda: pushes.append(None))
@@ -743,11 +745,12 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
 
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert coordinator._flush_unsub is None, "the stale timer was left armed"
-    assert len(pushes) == 1, "the availability change was not pushed at once"
+    assert len(pushes) == 1, "the availability change was not pushed when the grace ran out"
 
     # And it really does not fire later.
-    async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=31))
+    async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=3601))
     await hass.async_block_till_done()
     assert len(pushes) == 1, "the cancelled timer still pushed"
 
