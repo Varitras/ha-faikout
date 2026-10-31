@@ -56,6 +56,16 @@ def _indoor_unit_online(state: dict | None) -> bool:
         return False
     return as_bool(state.get("online", True))
 
+
+def _module_up(meta: dict) -> bool:
+    """Whether a bare-topic JSON says the module itself is still there.
+
+    The firmware's will and its clean close are {"up": false, ...}; every
+    message the module sends while running carries "up": true.
+    """
+    return as_bool(meta.get("up", True)) and as_bool(meta.get("online", True))
+
+
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
 
@@ -83,7 +93,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self.device_meta: dict = {}
         self._registered_meta: dict | None = None
         # Module presence: the bare state/<host> topic doubles as the LWT
-        # ("false" when the module drops off MQTT). Optimistic until told otherwise.
+        # ({"up": false} when the module drops off MQTT). Optimistic until told otherwise.
         self.module_online = True
         # Broker link state. The module LWT only tells us the device dropped off
         # MQTT; if our own connection to the broker dies we stop hearing anything
@@ -179,7 +189,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             for key, value in parsed.items():
                 if key in self.device_meta or len(self.device_meta) < MAX_STATE_FIELDS:
                     self.device_meta[key] = value
-            self.module_online = as_bool(parsed.get("online", True))
+            self.module_online = _module_up(parsed)
             self._update_device_registry()
         if self.module_online != was_online:
             # Once each way, and at info: a module the user switched off is not

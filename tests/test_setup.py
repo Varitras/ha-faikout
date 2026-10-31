@@ -209,7 +209,7 @@ async def test_device_info_from_meta_topic(hass):
 
 
 async def test_lwt_marks_entities_unavailable(hass):
-    """A bare 'false' on state/<host> is the module's LWT."""
+    """A bare 'false' on state/<host> also counts as the module gone."""
     transport = make_transport()
     await setup_integration(hass, transport)
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
@@ -219,6 +219,31 @@ async def test_lwt_marks_entities_unavailable(hass):
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
     transport.feed(state_topic(TEST_HOST), "true")
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    "goodbye",
+    [{"up": False, "reason": "LWT"}, {"up": False}],
+    ids=["last will", "clean close"],
+)
+async def test_module_losing_power_marks_entities_unavailable(hass, goodbye):
+    """The firmware says goodbye with "up": false, never with a bare "false".
+
+    Its will (broker-sent when the module loses power) and its clean close
+    both look like this; reading only "false" left the last values standing
+    as live after the breaker was switched off.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    transport.feed(state_topic(TEST_HOST), json.dumps(goodbye))
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+    heartbeat = {"id": "AABBCCDDEEFF", "up": True, "uptime": 5}
+    transport.feed(state_topic(TEST_HOST), json.dumps(heartbeat))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
 
