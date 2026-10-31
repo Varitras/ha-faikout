@@ -122,7 +122,8 @@ Reachable later via *Configure* on the integration entry:
 - **Update interval** — how often incoming changes are pushed to the entities. Defaults to 10 seconds.
   The module reports on every change, which for a running unit is more often than most people need and
   writes a recorder row each time. The newest value is never lost, only delayed to the end of the window.
-  Set `0` to pass every message straight through. Availability changes always bypass this.
+  Set `0` to pass every message straight through. Availability changes always bypass this; a loss
+  still waits out the one-minute grace described under [Entities](#entities).
 - **Use a separate MQTT client** — switch an existing entry between the two transports, with the broker details and
   the TLS switches described above. The form never shows the stored password: leave the field blank to
   keep it, type a new one to replace it, or tick **Remove the stored password** to drop it while keeping
@@ -152,10 +153,12 @@ Entities are only created for the fields your module actually reports, and appea
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
 settings if you want them.
 
-When the module goes away, loses its link to the indoor unit, or the broker connection drops, the
-entities turn *Unavailable* once that has lasted a minute; shorter dropouts are bridged and the last
-values stay. Coming back shows at once. Switching the unit off at the breaker therefore takes a little
-under two minutes to show: the broker itself notices the module is gone only after about 45 seconds.
+When the module goes away or the broker connection drops, the entities turn *Unavailable* once that
+has lasted a minute; shorter dropouts are bridged and the last values stay. Coming back shows at once.
+Switching the unit off at the breaker therefore takes up to about two minutes to show: the broker
+notices the module is gone within 45 seconds (one and a half times its 30-second keepalive). A lost
+link between the module and the indoor unit is handled the same way, but only CN_WIRED modules
+report one; on S21, X50A and Altherma_S the firmware does not signal it.
 
 ## What ends up in the log
 
