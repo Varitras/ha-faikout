@@ -66,9 +66,10 @@ def _module_up(meta: dict) -> bool:
     """Whether a bare-topic JSON says the module itself is still there.
 
     The firmware's will and its clean close are {"up": false, ...}; every
-    message the module sends while running carries "up": true.
+    message the module sends while running carries "up": true. Its "online"
+    is not about the module: see _meta_received.
     """
-    return as_bool(meta.get("up", True)) and as_bool(meta.get("online", True))
+    return as_bool(meta.get("up", True))
 
 
 class _Presence:
@@ -182,6 +183,9 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     async def async_start(self) -> None:
         await self._transport.async_connect()
+        # Here, not after subscribing: a loss the transport reports meanwhile
+        # must not be overwritten by a success that is already out of date.
+        self._broker.report(True)
         try:
             self._unsub = await self._transport.async_subscribe(
                 status_topic(self.host), self._message_received
@@ -205,7 +209,6 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 translation_key="subscribe_failed",
                 translation_placeholders={"device": device, "reason": reason},
             ) from None
-        self._broker.report(True)
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:
@@ -232,9 +235,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _availability_changed(self, _available: bool) -> None:
-        # Not through the update throttle as well: once the grace is over,
-        # "this device is gone" is exactly the news a user needs.
-        self._flush()
+        # Not through the update throttle: a loss past its grace, or a return,
+        # is exactly the news a user needs. Nor does it count as a data push,
+        # or the first fresh values after a return would wait out an interval.
+        self._push()
 
     @callback
     def _auth_failed(self) -> None:
@@ -250,6 +254,7 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         payload = _decoded(msg.payload)
         if payload is None:
             return
+        flushed = False
         if payload in ("true", "false", "online", "offline"):
             module_up = payload in ("true", "online")
         else:
@@ -267,9 +272,15 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                     self.device_meta[key] = value
             module_up = _module_up(parsed)
             self._update_device_registry()
+            # With the firmware's Home Assistant support on (its default), every
+            # module message carries the indoor-unit link as "online".
+            reports_indoor_unit = "online" in parsed
+            if reports_indoor_unit and self._indoor_unit.report(as_bool(parsed["online"])):
+                flushed = True
         if self._module.report(module_up):
-            return  # flushed already
-        self._maybe_push()
+            flushed = True
+        if not flushed:
+            self._maybe_push()
 
     @callback
     def _update_device_registry(self) -> None:
@@ -358,12 +369,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _flush(self) -> None:
-        # A flush that jumps the queue (availability change) makes any armed
+        """Push now and start the throttle window, once there is data to throttle."""
+        if self._pending is not None:
+            self._last_push = self.hass.loop.time()
+        self._push()
+
+    @callback
+    def _push(self) -> None:
+        # A push that jumps the queue (availability change) makes any armed
         # timer redundant; leaving it would fire one extra update later.
         if self._flush_unsub is not None:
             self._flush_unsub()
             self._flush_unsub = None
-        self._last_push = self.hass.loop.time()
         if self._pending is not None:
             self.async_set_updated_data(self._pending)
         else:
@@ -409,16 +426,18 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             ) from None
 
     async def async_shutdown(self) -> None:
-        for presence in (self._module, self._broker, self._indoor_unit):
-            presence.cancel()
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
         if self._unsub_meta is not None:
             self._unsub_meta()
             self._unsub_meta = None
+        # Stopping the client reports its own disconnect, which would arm a
+        # grace timer; so timers are dropped only once it has stopped.
+        await self._transport.async_stop()
+        for presence in (self._module, self._broker, self._indoor_unit):
+            presence.cancel()
         if self._flush_unsub is not None:
             self._flush_unsub()
             self._flush_unsub = None
-        await self._transport.async_stop()
         await super().async_shutdown()

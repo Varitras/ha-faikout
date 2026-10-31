@@ -747,7 +747,7 @@ async def test_out_of_band_flush_cancels_a_pending_timer(hass):
     await hass.async_block_till_done()
     await outlast_grace(hass)
     assert coordinator._flush_unsub is None, "the stale timer was left armed"
-    assert len(pushes) == 1, "the availability change was not pushed at once"
+    assert len(pushes) == 1, "the availability change was not pushed when the grace ran out"
 
     # And it really does not fire later.
     async_fire_time_changed(hass, dt_util.utcnow() + datetime.timedelta(seconds=3601))

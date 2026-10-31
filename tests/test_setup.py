@@ -1,5 +1,6 @@
 """Setup, coordinator and entity behaviour against a real Home Assistant core."""
 import json
+from datetime import timedelta
 
 import pytest
 
@@ -9,6 +10,10 @@ pytest.importorskip("pytest_homeassistant_custom_component.common")
 from homeassistant.config_entries import ConfigEntryState  # noqa: E402
 from homeassistant.const import STATE_UNAVAILABLE  # noqa: E402
 from homeassistant.exceptions import ServiceValidationError  # noqa: E402
+from homeassistant.util import dt as dt_util  # noqa: E402
+from pytest_homeassistant_custom_component.common import (  # noqa: E402
+    async_fire_time_changed,
+)
 
 from custom_components.faikout.const import (  # noqa: E402
     CONF_UPDATE_INTERVAL,
@@ -16,7 +21,7 @@ from custom_components.faikout.const import (  # noqa: E402
     status_topic,
 )
 
-from .conftest import STATUS_PAYLOAD, TEST_HOST  # noqa: E402
+from .conftest import META_PAYLOAD, STATUS_PAYLOAD, TEST_HOST, FakeTransport  # noqa: E402
 from .ha_helpers import make_transport, outlast_grace, setup_integration  # noqa: E402
 
 CLIMATE = f"climate.{TEST_HOST}"
@@ -208,7 +213,7 @@ async def test_device_info_from_meta_topic(hass):
     assert (dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff") in device.connections
 
 
-async def test_lwt_marks_entities_unavailable(hass):
+async def test_bare_false_on_the_state_topic_marks_entities_unavailable(hass):
     """A bare 'false' on state/<host> also counts as the module gone."""
     transport = make_transport()
     await setup_integration(hass, transport)
@@ -341,6 +346,170 @@ async def test_a_short_dropout_is_not_logged(hass, caplog):
         await outlast_grace(hass)
 
     assert not caplog.records
+
+
+async def _after(hass, seconds):
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=seconds))
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize("loss", LOSSES.values(), ids=LOSSES.keys())
+async def test_the_grace_is_a_minute(hass, loss):
+    """Literal seconds, not the constant: the README promises a minute."""
+    lose, _regain = loss
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    lose(transport)
+    await hass.async_block_till_done()
+    await _after(hass, 55)
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+    await _after(hass, 61)
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_a_loss_reported_again_and_again_still_shows_after_a_minute(hass, freezer):
+    """A module that keeps saying "indoor unit lost" must not push the deadline back.
+
+    Restarting the wait on every report would keep stale values live forever,
+    because the module repeats itself for as long as the link is down.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    for _ in range(7):
+        transport.feed(status_topic(TEST_HOST), json.dumps({"online": False}))
+        await hass.async_block_till_done()
+        freezer.tick(timedelta(seconds=10))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_the_indoor_unit_link_on_the_state_topic_is_not_the_module(hass, caplog):
+    """With the firmware's Home Assistant support on, every module message
+    carries "online": its link to the indoor unit, not the module itself.
+
+    Read as the module, it took the network diagnostics down with it and
+    logged "stopped reporting" for a module that was still reporting.
+    """
+    import logging
+
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="custom_components.faikout.coordinator"):
+        transport.feed(state_topic(TEST_HOST), json.dumps({**HEARTBEAT, "online": False}))
+        await hass.async_block_till_done()
+        await outlast_grace(hass)
+
+    assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
+    assert not [r for r in caplog.records if "stopped reporting" in r.getMessage()]
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+    transport.feed(state_topic(TEST_HOST), json.dumps({**HEARTBEAT, "online": True}))
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+async def test_fresh_values_after_a_return_are_not_held_back(hass, freezer):
+    """Coming back is not a data push: the first fresh status shows at once.
+
+    Counting it as one held the new values back for a whole update interval
+    while the ones from before the loss were shown as live.
+    """
+    transport = make_transport()
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 30})
+    freezer.tick(timedelta(seconds=120))
+
+    transport.feed(state_topic(TEST_HOST), json.dumps({"up": False, "reason": "LWT"}))
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=61))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+    transport.feed(state_topic(TEST_HOST), json.dumps(HEARTBEAT))
+    await hass.async_block_till_done()
+    transport.feed(status_topic(TEST_HOST), json.dumps({"home": 25.0}))
+    await hass.async_block_till_done()
+
+    assert hass.states.get(CLIMATE).attributes["current_temperature"] == 25.0
+
+
+class _MetaFirstTransport(FakeTransport):
+    """The broker hands the retained module message over before the status."""
+
+    async def async_subscribe(self, topic, callback):
+        unsub = await super().async_subscribe(topic, callback)
+        if topic == state_topic(TEST_HOST):
+            self.feed(status_topic(TEST_HOST), json.dumps(STATUS_PAYLOAD))
+        return unsub
+
+
+async def test_a_module_message_before_the_status_does_not_hold_it_back(hass):
+    transport = _MetaFirstTransport({state_topic(TEST_HOST): json.dumps(META_PAYLOAD)})
+    await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
+
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 21.5
+
+
+class _LinkDropsWhileSubscribing(FakeTransport):
+    async def async_subscribe(self, topic, callback):
+        unsub = await super().async_subscribe(topic, callback)
+        if topic == state_topic(TEST_HOST):
+            self.listener(False)
+        return unsub
+
+
+async def test_a_link_lost_during_setup_is_not_overwritten(hass):
+    transport = _LinkDropsWhileSubscribing(make_transport()._initial)
+    await setup_integration(hass, transport)
+
+    await outlast_grace(hass)
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+class _StopReportsTheLink(FakeTransport):
+    """paho reports its own disconnect while the client is being stopped."""
+
+    async def async_stop(self):
+        await super().async_stop()
+        self.listener(False)
+
+
+async def test_nothing_fires_after_unload(hass, caplog):
+    """A loss in its grace, or one the stopping client reports, dies with the entry."""
+    import logging
+
+    transport = _StopReportsTheLink(make_transport()._initial)
+    entry = await setup_integration(hass, transport)
+    coordinator = entry.runtime_data
+    transport.feed(state_topic(TEST_HOST), json.dumps({"up": False, "reason": "LWT"}))
+    await hass.async_block_till_done()
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="custom_components.faikout.coordinator"):
+        await coordinator.async_shutdown()
+        await outlast_grace(hass)
+
+    assert not caplog.records
+
+
+async def test_entities_are_unavailable_until_the_first_status(hass):
+    """Nothing to show yet is not "all fine": a typo in the host looks like this."""
+    from unittest.mock import AsyncMock, patch
+
+    transport = FakeTransport({state_topic(TEST_HOST): json.dumps(META_PAYLOAD)})
+    with patch(
+        "custom_components.faikout.coordinator.FaikoutCoordinator.async_wait_first_data",
+        AsyncMock(),
+    ):
+        await setup_integration(hass, transport)
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
 
 async def test_availability_is_logged_once_each_way_and_never_as_an_error(
