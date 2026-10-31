@@ -17,7 +17,7 @@ from custom_components.faikout.const import (  # noqa: E402
 )
 
 from .conftest import STATUS_PAYLOAD, TEST_HOST  # noqa: E402
-from .ha_helpers import make_transport, setup_integration  # noqa: E402
+from .ha_helpers import make_transport, outlast_grace, setup_integration  # noqa: E402
 
 CLIMATE = f"climate.{TEST_HOST}"
 
@@ -216,6 +216,7 @@ async def test_lwt_marks_entities_unavailable(hass):
 
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
     transport.feed(state_topic(TEST_HOST), "true")
@@ -240,12 +241,106 @@ async def test_module_losing_power_marks_entities_unavailable(hass, goodbye):
 
     transport.feed(state_topic(TEST_HOST), json.dumps(goodbye))
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
-    heartbeat = {"id": "AABBCCDDEEFF", "up": True, "uptime": 5}
-    transport.feed(state_topic(TEST_HOST), json.dumps(heartbeat))
+    transport.feed(state_topic(TEST_HOST), json.dumps(HEARTBEAT))
     await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+HEARTBEAT = {"id": "AABBCCDDEEFF", "up": True, "uptime": 5}
+
+# Each way the entities can lose their source: how it is lost, how it returns.
+LOSSES = {
+    "module gone": (
+        lambda t: t.feed(state_topic(TEST_HOST), json.dumps({"up": False, "reason": "LWT"})),
+        lambda t: t.feed(state_topic(TEST_HOST), json.dumps(HEARTBEAT)),
+    ),
+    "indoor unit lost": (
+        lambda t: t.feed(status_topic(TEST_HOST), json.dumps({"online": False})),
+        lambda t: t.feed(status_topic(TEST_HOST), json.dumps({"online": True})),
+    ),
+    "broker link lost": (
+        lambda t: t.listener(False),
+        lambda t: t.listener(True),
+    ),
+}
+
+
+@pytest.mark.parametrize("loss", LOSSES.values(), ids=LOSSES.keys())
+async def test_a_short_dropout_never_reaches_the_entities(hass, loss):
+    """A WLAN or broker hiccup must not flip every entity to unavailable.
+
+    Each flip breaks the history graphs and fires automations watching for
+    "unavailable", for a module that was back seconds later.
+    """
+    lose, regain = loss
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    lose(transport)
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+    regain(transport)
+    await hass.async_block_till_done()
+    await outlast_grace(hass)
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize("loss", LOSSES.values(), ids=LOSSES.keys())
+async def test_a_lasting_loss_shows_once_it_outlasts_the_grace(hass, loss):
+    lose, regain = loss
+    transport = make_transport()
+    await setup_integration(hass, transport)
+
+    lose(transport)
+    await hass.async_block_till_done()
+    await outlast_grace(hass)
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+    # Coming back has nothing to bridge: it shows at once.
+    regain(transport)
+    await hass.async_block_till_done()
+    assert hass.states.get(CLIMATE).state != STATE_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    ("status", "meta"),
+    [
+        (None, {"up": False, "reason": "LWT"}),
+        ({**STATUS_PAYLOAD, "online": False}, None),
+    ],
+    ids=["retained will", "retained lost indoor unit"],
+)
+async def test_a_loss_known_at_startup_shows_at_once(hass, status, meta):
+    """Home Assistant restarting while the unit is off: nothing to bridge.
+
+    The broker hands over the retained goodbye first thing; holding it back
+    would show values from before the power cut as live.
+    """
+    await setup_integration(hass, make_transport(status=status, meta=meta))
+
+    assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
+
+
+async def test_a_short_dropout_is_not_logged(hass, caplog):
+    import logging
+
+    transport = make_transport()
+    await setup_integration(hass, transport)
+    caplog.clear()
+
+    with caplog.at_level(logging.INFO, logger="custom_components.faikout.coordinator"):
+        for lose, regain in LOSSES.values():
+            lose(transport)
+            await hass.async_block_till_done()
+            regain(transport)
+            await hass.async_block_till_done()
+        await outlast_grace(hass)
+
+    assert not caplog.records
 
 
 async def test_availability_is_logged_once_each_way_and_never_as_an_error(
@@ -266,6 +361,7 @@ async def test_availability_is_logged_once_each_way_and_never_as_an_error(
     with caplog.at_level(logging.INFO, logger="custom_components.faikout.coordinator"):
         transport.feed(state_topic(TEST_HOST), "false")
         await hass.async_block_till_done()
+        await outlast_grace(hass)
         transport.feed(state_topic(TEST_HOST), "false")  # no second line for the same news
         await hass.async_block_till_done()
         transport.feed(state_topic(TEST_HOST), "true")
@@ -572,6 +668,7 @@ async def test_string_false_online_marks_the_device_unavailable(hass):
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"online": "false"}))
     await hass.async_block_till_done()
+    await outlast_grace(hass)
 
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
 
@@ -689,12 +786,14 @@ async def test_module_diagnostics_stay_available_when_the_indoor_unit_is_lost(ha
 
     transport.feed(status_topic(TEST_HOST), json.dumps({"online": False}))
     await hass.async_block_till_done()
+    await outlast_grace(hass)
 
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE
     assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == "192.168.1.50"
 
     transport.feed(state_topic(TEST_HOST), "false")
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert hass.states.get(f"sensor.{TEST_HOST}_ip_address").state == STATE_UNAVAILABLE
 
 
@@ -703,10 +802,11 @@ async def test_indoor_unit_going_offline_is_not_delayed_by_the_throttle(hass, of
     """Availability bypasses the throttle on the status topic as well.
 
     Only the module topic did; a lost indoor unit kept showing stale values as
-    live for up to the whole update interval.
+    live for up to the whole update interval, on top of the grace.
     """
     transport = make_transport()
     await setup_integration(hass, transport, options={CONF_UPDATE_INTERVAL: 3600})
     transport.feed(status_topic(TEST_HOST), offline)
     await hass.async_block_till_done()
+    await outlast_grace(hass)
     assert hass.states.get(CLIMATE).state == STATE_UNAVAILABLE

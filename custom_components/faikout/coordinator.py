@@ -36,6 +36,11 @@ from .transport import FaikoutTransport
 
 _LOGGER = logging.getLogger(__name__)
 
+# How long a loss must last before the entities show it. Short WLAN or broker
+# dropouts would otherwise flip every entity to unavailable and back, which
+# breaks history graphs and fires automations watching for "unavailable".
+OFFLINE_GRACE = 60
+
 
 def _decoded(payload) -> str | None:
     """Decode an MQTT payload, refusing anything oversized.
@@ -66,6 +71,53 @@ def _module_up(meta: dict) -> bool:
     return as_bool(meta.get("up", True)) and as_bool(meta.get("online", True))
 
 
+class _Presence:
+    """One source the entities depend on, with short losses bridged.
+
+    A loss shows only once it has lasted OFFLINE_GRACE; a return shows at once
+    and drops a pending loss. A loss reported before the source was ever seen
+    present (a retained will at startup) has nothing to bridge and shows at once.
+    """
+
+    def __init__(self, hass: HomeAssistant, on_change: Callable[[bool], None]) -> None:
+        self._hass = hass
+        self._on_change = on_change
+        self.shown = True
+        self._seen = False
+        self._timer: Callable[[], None] | None = None
+
+    @callback
+    def report(self, present: bool) -> bool:
+        """Take the latest reading; True when what the entities see changed now."""
+        if present:
+            self._seen = True
+            self.cancel()
+            return self._show(True)
+        if not self._seen:
+            return self._show(False)
+        if self.shown and self._timer is None:
+            self._timer = async_call_later(self._hass, OFFLINE_GRACE, self._expired)
+        return False
+
+    @callback
+    def cancel(self) -> None:
+        if self._timer is not None:
+            self._timer()
+            self._timer = None
+
+    @callback
+    def _expired(self, _now) -> None:
+        self._timer = None
+        self._show(False)
+
+    def _show(self, shown: bool) -> bool:
+        if shown == self.shown:
+            return False
+        self.shown = shown
+        self._on_change(shown)
+        return True
+
+
 type FaikoutConfigEntry = ConfigEntry["FaikoutCoordinator"]
 
 
@@ -94,11 +146,13 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._registered_meta: dict | None = None
         # Module presence: the bare state/<host> topic doubles as the LWT
         # ({"up": false} when the module drops off MQTT). Optimistic until told otherwise.
-        self.module_online = True
-        # Broker link state. The module LWT only tells us the device dropped off
-        # MQTT; if our own connection to the broker dies we stop hearing anything
-        # at all, so entities must go unavailable on that too.
-        self.transport_online = True
+        self._module = _Presence(hass, self._module_presence_changed)
+        # Broker link. The module LWT only tells us the device dropped off MQTT;
+        # if our own connection to the broker dies we stop hearing anything at
+        # all, so entities must go unavailable on that too.
+        self._broker = _Presence(hass, self._broker_presence_changed)
+        # The module's link to the indoor unit, from the status `online` field.
+        self._indoor_unit = _Presence(hass, self._availability_changed)
         transport.set_connection_listener(self._transport_connection_changed)
         transport.set_auth_failure_listener(self._auth_failed)
         # Update throttle: 0 = real-time; N>0 = at most one push per N seconds,
@@ -113,8 +167,14 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         self._flush_unsub: Callable[[], None] | None = None
 
     @property
-    def indoor_unit_online(self) -> bool:
-        return _indoor_unit_online(self.data)
+    def module_available(self) -> bool:
+        """The module and our broker link, as the entities should show them."""
+        return self._module.shown and self._broker.shown
+
+    @property
+    def indoor_unit_available(self) -> bool:
+        """The module's link to the indoor unit, as the entities should show it."""
+        return bool(self.data) and self._indoor_unit.shown
 
     @callback
     def set_update_interval(self, seconds) -> None:
@@ -145,19 +205,36 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
                 translation_key="subscribe_failed",
                 translation_placeholders={"device": device, "reason": reason},
             ) from None
+        self._broker.report(True)
 
     @callback
     def _transport_connection_changed(self, connected: bool) -> None:
-        if connected == self.transport_online:
-            return
-        self.transport_online = connected
+        self._broker.report(connected)
+
+    @callback
+    def _broker_presence_changed(self, connected: bool) -> None:
         if not connected:
             _LOGGER.warning(
                 "Lost the MQTT connection carrying %s", log_identifier(self.host)
             )
-        # Availability changed for every entity — push immediately rather than
-        # letting the update throttle delay the bad news.
-        self.async_update_listeners()
+        self._availability_changed(connected)
+
+    @callback
+    def _module_presence_changed(self, online: bool) -> None:
+        # Once each way, and at info: a module the user switched off is not
+        # an error and not something they can act on, which is what Home
+        # Assistant's log-when-unavailable rule asks for.
+        message = (
+            "Module %s is reporting again" if online else "Module %s stopped reporting"
+        )
+        _LOGGER.info(message, log_identifier(self.host))
+        self._availability_changed(online)
+
+    @callback
+    def _availability_changed(self, _available: bool) -> None:
+        # Not through the update throttle as well: once the grace is over,
+        # "this device is gone" is exactly the news a user needs.
+        self._flush()
 
     @callback
     def _auth_failed(self) -> None:
@@ -173,9 +250,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         payload = _decoded(msg.payload)
         if payload is None:
             return
-        was_online = self.module_online
         if payload in ("true", "false", "online", "offline"):
-            self.module_online = payload in ("true", "online")
+            module_up = payload in ("true", "online")
         else:
             parsed = parse_device_meta(payload)
             if parsed is None:
@@ -189,23 +265,10 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             for key, value in parsed.items():
                 if key in self.device_meta or len(self.device_meta) < MAX_STATE_FIELDS:
                     self.device_meta[key] = value
-            self.module_online = _module_up(parsed)
+            module_up = _module_up(parsed)
             self._update_device_registry()
-        if self.module_online != was_online:
-            # Once each way, and at info: a module the user switched off is not
-            # an error and not something they can act on, which is what Home
-            # Assistant's log-when-unavailable rule asks for.
-            message = (
-                "Module %s is reporting again"
-                if self.module_online
-                else "Module %s stopped reporting"
-            )
-            _LOGGER.info(message, log_identifier(self.host))
-            # Availability, like a lost broker link, must not sit in the update
-            # throttle: "this device is gone" is exactly the news a user needs
-            # promptly, and holding it back shows stale values as live.
-            self._flush()
-            return
+        if self._module.report(module_up):
+            return  # flushed already
         self._maybe_push()
 
     @callback
@@ -266,10 +329,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
         # the first-data wait, so entity/switch discovery sees the full field set.
         if payload not in ("true", "false"):
             self._first_data.set()
-        if _indoor_unit_online(new_state) != self.indoor_unit_online:
-            # Same rule as the module topic: availability never waits.
-            self._flush()
-            return
+        if self._indoor_unit.report(_indoor_unit_online(new_state)):
+            return  # flushed already
         self._maybe_push()
 
     @callback
@@ -348,6 +409,8 @@ class FaikoutCoordinator(DataUpdateCoordinator[dict]):
             ) from None
 
     async def async_shutdown(self) -> None:
+        for presence in (self._module, self._broker, self._indoor_unit):
+            presence.cancel()
         if self._unsub is not None:
             self._unsub()
             self._unsub = None

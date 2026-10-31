@@ -4,9 +4,14 @@ Importing this module requires Home Assistant; the test modules that use it
 guard with `pytest.importorskip`.
 """
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.faikout.const import (
     CONF_DEVICE_ID,
@@ -18,6 +23,7 @@ from custom_components.faikout.const import (
     state_topic,
     status_topic,
 )
+from custom_components.faikout.coordinator import OFFLINE_GRACE
 
 from .conftest import META_PAYLOAD, STATUS_PAYLOAD, TEST_HOST, FakeTransport
 
@@ -34,6 +40,12 @@ def make_transport(status=None, meta=None):
             ),
         }
     )
+
+
+async def outlast_grace(hass):
+    """Let a loss last longer than the grace that bridges short dropouts."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=OFFLINE_GRACE + 1))
+    await hass.async_block_till_done()
 
 
 async def setup_integration(hass, transport, options=None, mac=None, host=TEST_HOST):

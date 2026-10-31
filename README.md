@@ -152,13 +152,18 @@ Entities are only created for the fields your module actually reports, and appea
 field turns up for the first time. Some diagnostics are disabled by default — enable them in the entity
 settings if you want them.
 
+When the module goes away, loses its link to the indoor unit, or the broker connection drops, the
+entities turn *Unavailable* once that has lasted a minute; shorter dropouts are bridged and the last
+values stay. Coming back shows at once. Switching the unit off at the breaker therefore takes a little
+under two minutes to show: the broker itself notices the module is gone only after about 45 seconds.
+
 ## What ends up in the log
 
 Home Assistant logs are the usual attachment to a bug report, so this integration keeps the names that
 identify your installation out of everything it writes: module host names, the broker address and the
 MQTT topics carrying them appear as a short stable digest (`state/#3204c9cb/status`), rejected values
-are described by field and type rather than reproduced, and a module going away or coming back is one
-line each way at info level.
+are described by field and type rather than reproduced, and a module going away (for longer than the
+minute above) or coming back is one line each way at info level.
 
 What is outside its control is naming. The config entry, the device and every entity id are derived
 from the module host you chose, and Home Assistant uses those names in its own messages - setup and
