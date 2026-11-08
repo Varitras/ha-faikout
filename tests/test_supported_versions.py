@@ -114,7 +114,8 @@ def test_no_entity_class_uses_a_member_home_assistant_deprecated(caplog):
     That is at import, before any test runs, so the guard that fails a test on
     a reported deprecation never sees it: the climate entity's old temperature
     names reached users' logs that way. Defining the classes again inside the
-    test puts the report where the guard reads.
+    test puts the report where the guard reads. Only Home Assistant 2026.11 and
+    newer report this way, so on an older lane there is nothing to find.
     """
     pytest.importorskip("homeassistant")
     # A package of its own pointing at the integration's directory: the test
