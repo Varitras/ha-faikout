@@ -12,6 +12,7 @@ it holds.
 | `test_supported_versions.py::test_versions_compare_as_numbers` | the guard above compares versions as numbers, not text |
 | `test_supported_versions.py::test_every_action_is_pinned_or_a_known_moving_ref` | every workflow action is version-pinned, bar two deliberate moving refs |
 | `test_supported_versions.py::test_workflow_directory_is_not_empty` | the guard above actually found files to scan |
+| `test_supported_versions.py::test_no_entity_class_uses_a_member_home_assistant_deprecated` | no entity class provides a member Home Assistant reports as deprecated when the class is defined, which happens at import where the per-test deprecation guard cannot see it |
 | `test_supported_versions.py::test_every_tool_check_sh_runs_is_pinned_for_ci` | every tool check.sh runs is pinned for CI, so a tool release cannot turn CI red unannounced |
 | `test_log_hygiene.py::test_nothing_identifying_reaches_a_log_in_the_clear` | logger calls and exception messages in the forms its docstring lists carry no host, MAC or topic unmasked |
 | `test_log_hygiene.py::test_the_package_has_modules_to_scan` | the guard above actually found modules to scan |
