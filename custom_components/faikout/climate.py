@@ -31,7 +31,12 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
     _attr_name = None  # primary entity → uses device name
     # Hangs the translation of the device's own fan steps (quiet) on this entity.
     _attr_translation_key = "faikout"
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    # Both temperature APIs until the minimum is 2026.11: older releases read
+    # only the old names, 2026.11 reads the native ones and, as long as a class
+    # provides those, ignores the old ones instead of warning (they stop
+    # working in 2027.11). 2026.11 declares the old ones Final, hence the ignores.
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS  # type: ignore[misc]
     _attr_hvac_modes = [HVACMode(m) for m in const.HVAC_MODES]
     _attr_min_temp = const.TEMP_MIN
     _attr_max_temp = const.TEMP_MAX
@@ -103,12 +108,20 @@ class FaikoutClimate(FaikoutEntity, ClimateEntity):
         return HVACAction(action) if action is not None else None
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         return const.as_number(self._data.get("home"))
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         return const.as_number(self._data.get("temp"))
+
+    @property  # type: ignore[misc]
+    def current_temperature(self) -> float | None:
+        return self.native_current_temperature
+
+    @property  # type: ignore[misc]
+    def target_temperature(self) -> float | None:
+        return self.native_target_temperature
 
     @property
     def fan_mode(self):

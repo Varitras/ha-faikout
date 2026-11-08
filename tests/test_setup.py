@@ -892,6 +892,25 @@ async def test_fan_control_is_not_offered_without_a_fan(hass):
     assert not a["supported_features"] & ClimateEntityFeature.FAN_MODE
 
 
+async def test_climate_serves_the_native_temperature_names(hass):
+    """Home Assistant 2026.11 reads only these and warns about the old ones,
+    which stop working in 2027.11; before 2026.11 only the old ones are read.
+    """
+    from homeassistant.const import UnitOfTemperature
+
+    await setup_integration(hass, make_transport())
+    entity = hass.data["climate"].get_entity(CLIMATE)
+
+    assert entity.native_current_temperature == 19.5
+    assert entity.native_target_temperature == 21.5
+    # Attributes, not properties: before 2026.11 no native_temperature_unit
+    # property exists, and from 2026.11 reading temperature_unit is reported.
+    assert entity._attr_native_temperature_unit == UnitOfTemperature.CELSIUS
+    assert entity._attr_temperature_unit == UnitOfTemperature.CELSIUS
+    assert entity.current_temperature == entity.native_current_temperature
+    assert entity.target_temperature == entity.native_target_temperature
+
+
 @pytest.mark.parametrize("bad", ["warm", True, {"v": 1}, float("nan")])
 async def test_climate_temperatures_reject_unusable_values(hass, bad):
     transport = make_transport()

@@ -5,9 +5,13 @@ Home Assistant version lives in hacs.json, in the README and in the CI lane
 that actually installs it, and nothing stops those three from drifting apart.
 A claimed minimum no lane installs is a promise nobody checks.
 """
+import importlib
 import json
+import logging
 import pathlib
 import re
+import sys
+import types
 
 import pytest
 
@@ -102,6 +106,39 @@ def test_every_tool_check_sh_runs_is_pinned_for_ci():
     }
     assert tools, "found no tools in check.sh - the scan is broken"
     assert tools <= pinned, f"not pinned in requirements-ci.txt: {sorted(tools - pinned)}"
+
+
+def test_no_entity_class_uses_a_member_home_assistant_deprecated(caplog):
+    """Home Assistant reports a deprecated entity member when the class is defined.
+
+    That is at import, before any test runs, so the guard that fails a test on
+    a reported deprecation never sees it: the climate entity's old temperature
+    names reached users' logs that way. Defining the classes again inside the
+    test puts the report where the guard reads. Only Home Assistant 2026.11 and
+    newer report this way, so on an older lane there is nothing to find.
+    """
+    pytest.importorskip("homeassistant")
+    # A package of its own pointing at the integration's directory: the test
+    # harness's custom_components package can shadow the repository's here.
+    probe = "faikout_defined_again"
+    parent = types.ModuleType(probe)
+    parent.__path__ = [str(REPO / "custom_components" / "faikout")]
+    sys.modules[probe] = parent
+    try:
+        with caplog.at_level(logging.WARNING):
+            platforms = importlib.import_module(f"{probe}.const").PLATFORMS
+            for stem in ("entity", *platforms):
+                importlib.import_module(f"{probe}.{stem}")
+    finally:
+        for name in [n for n in sys.modules if n.split(".")[0] == probe]:
+            del sys.modules[name]
+
+    reported = [
+        record.getMessage()
+        for record in caplog.records
+        if "will stop working in Home Assistant" in record.getMessage()
+    ]
+    assert not reported, "\n".join(reported)
 
 
 GUARD_MODULES = ("test_supported_versions.py", "test_log_hygiene.py", "test_translations.py")
